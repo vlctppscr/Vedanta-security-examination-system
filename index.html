@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
@@ -797,7 +797,7 @@ html.no-ftr-border .footer-bottom{ border-top-color:transparent; }
 
 /* ---- admin-adjustable transparency for every box ---- */
 html.has-box-alpha .card, html.has-box-alpha .tile, html.has-box-alpha .role-card, html.has-box-alpha .stat-box,
-html.has-box-alpha .admin-nav, html.has-box-alpha .qcard{
+html.has-box-alpha .admin-nav, html.has-box-alpha .qcard, html.has-box-alpha .admin-sidebar{
   background:rgba(var(--panel-rgb), var(--box-alpha,1)); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
 }
 html.has-box-alpha .hero.hero-boxbg .role-card{ background:var(--hero-box-bg); }
@@ -1035,6 +1035,7 @@ let SITE_SETTINGS = {
   supportEmail:'', supportPhone:'', address:'', copyrightText:'',
   theme:'dark', footerEnabled:true,
   showClock:false,               // current date & time in the header
+  sidebarAlwaysOpen:false,       // keep the admin sidebar open after picking a menu item instead of auto-hiding
   logoImg:'',                    // custom round logo (data URL); '' = default shield icon
   /* background posters — '' = default look. Blur in px, Dim (dark overlay) in % */
   bgHeader:'', bgHeaderBlur:0, bgHeaderDim:40, bgHeaderType:'image',
@@ -1444,6 +1445,7 @@ async function loadSiteSettings(){
       Object.keys(row).forEach(k=>{ if(row[k]===null || row[k]===undefined) delete row[k]; }); // columns never filled in keep their defaults / local copy
       if(row.footerEnabled!=null) row.footerEnabled = !!row.footerEnabled;
       if(row.showClock!=null) row.showClock = !!row.showClock;
+      if(row.sidebarAlwaysOpen!=null) row.sidebarAlwaysOpen = !!row.sidebarAlwaysOpen;
       if(row.headerBorder!=null) row.headerBorder = !!row.headerBorder;
       if(row.footerBorder!=null) row.footerBorder = !!row.footerBorder;
       if(typeof row.heroBoxes === 'string'){
@@ -1535,6 +1537,26 @@ function enterApp(screen, extra){
   try{ history.pushState({vsesNav:true}, ''); }catch(e){}
   render();
 }
+/* Used when leaving the exam RESULT screen (Back to month / View your
+   answers). The just-finished, now-locked exam-run screen (and this result
+   screen itself, which is never pushed to HISTORY at all) must never be
+   reachable again via the physical/browser back button. So this drops only
+   that spent exam-run entry — and, when returning straight to the month's
+   exam list, the now-duplicate copy of that same list already sitting
+   underneath it — while leaving everything further back (the month list
+   itself, the months dashboard) exactly as reachable as it always was. */
+function leaveExamResult(screen, extra){
+  while(HISTORY.length && HISTORY[HISTORY.length-1].screen==='guard-exam-run'){
+    HISTORY.pop();
+  }
+  if(screen==='guard-month' && HISTORY.length && HISTORY[HISTORY.length-1].screen==='guard-month'){
+    HISTORY.pop();
+  }
+  S = Object.assign({screen}, extra||{});
+  window.scrollTo({top:0,behavior:'instant'});
+  try{ history.replaceState({vsesNav:true}, ''); }catch(e){}
+  render();
+}
 window.addEventListener('popstate', ()=>{
   if(S && S.screen==='guard-exam-run' && !S.submitted){
     // Never let a stray back-button press quietly throw away an in-progress
@@ -1558,7 +1580,15 @@ window.addEventListener('popstate', ()=>{
   }
   if(S && S.adminTab==='exam') resetQB();
   if(HISTORY.length>0){
-    S = HISTORY.pop();
+    let next = HISTORY.pop();
+    // A 'guard-exam-run' entry only ever ends up in HISTORY already
+    // submitted and locked (it's pushed at the moment of submitting) — so
+    // if a stray back press (without using the on-screen result buttons)
+    // lands on one, skip straight past it to whatever is behind it.
+    while(next && next.screen==='guard-exam-run' && HISTORY.length>0){
+      next = HISTORY.pop();
+    }
+    S = next;
     window.scrollTo({top:0,behavior:'instant'});
     render();
   }
@@ -1805,6 +1835,11 @@ function bindGlobal(){
   });
   document.querySelectorAll('.admin-sidebar [data-navto]').forEach(el=>el.addEventListener('click',()=>{
     const id = el.getAttribute('data-navto');
+    if(SITE_SETTINGS.sidebarAlwaysOpen){
+      // stays open — no slide-shut animation, no width-shrink delay
+      resetQB(); goRoot({adminTab:id, adminNavOpen:true});
+      return;
+    }
     setAdminSidebarOpen(false); // slides shut + the section expands back to full width
     setTimeout(()=>{ resetQB(); goRoot({adminTab:id, adminNavOpen:false}); }, SIDEBAR_ANIM_MS);
   }));
@@ -2279,8 +2314,8 @@ function screenResult(){
   </div>`;
 }
 function bindResult(){
-  document.querySelector('[data-act2="back"]').addEventListener('click',()=>go('guard-month',{monthId:S.monthId}));
-  document.querySelector('[data-act2="review"]').addEventListener('click',()=>go('guard-review',{attemptId:S.attemptId, from:'guard-month', monthId:S.monthId}));
+  document.querySelector('[data-act2="back"]').addEventListener('click',()=>leaveExamResult('guard-month',{monthId:S.monthId}));
+  document.querySelector('[data-act2="review"]').addEventListener('click',()=>leaveExamResult('guard-review',{attemptId:S.attemptId, from:'guard-month', monthId:S.monthId}));
   const numEl = document.querySelector('.score-ring .num');
   if(numEl){
     const target = parseInt(numEl.textContent,10) || 0;
@@ -2406,7 +2441,7 @@ function bindAdminAuth(){
       if(error) throw error;
       if(!data || data.length===0){ patch({formError:'Incorrect mobile number or password.'}); return; }
       setSession({role:'admin', mobile, name: data[0].name});
-      enterApp('admin-dashboard',{adminTab:'months'});
+      enterApp('admin-dashboard',{adminTab:'months', adminNavOpen:true});
     });
   });
 }
@@ -2482,6 +2517,7 @@ function adminSiteSettings(){
   const year = new Date().getFullYear();
   const footerOn = s.footerEnabled!==false;
   const clockOn = !!s.showClock;
+  const sidebarAlwaysOn = !!s.sidebarAlwaysOpen;
   const hasLogo = !!s.logoImg;
   const stab = (S.settingsTab==='hero' || S.settingsTab==='look') ? S.settingsTab : 'general';
   const bt = boxTransparency();
@@ -2506,6 +2542,14 @@ function adminSiteSettings(){
         <input type="checkbox" id="clockToggle" ${clockOn?'checked':''}>
         <span class="switch-track"></span>
         <span class="switch-label">${clockOn?'Shown in the header':'Hidden'}</span>
+      </label>
+    </div>
+    <div class="field">
+      <label>Admin sidebar</label>
+      <label class="switch">
+        <input type="checkbox" id="sidebarAlwaysToggle" ${sidebarAlwaysOn?'checked':''}>
+        <span class="switch-track"></span>
+        <span class="switch-label">${sidebarAlwaysOn?'Always shown — stays open after picking a menu item':'Auto-hides after picking a menu item'}</span>
       </label>
     </div>
     <div class="field" style="margin-bottom:0;">
@@ -3095,6 +3139,10 @@ function bindAdminSiteSettings(){
   if(clockToggle) clockToggle.addEventListener('change', ()=>{
     saveSiteSettingPartial({showClock:clockToggle.checked}, clockToggle.checked ? 'Date & time shown in header' : 'Date & time hidden');
   });
+  const sidebarAlwaysToggle = document.getElementById('sidebarAlwaysToggle');
+  if(sidebarAlwaysToggle) sidebarAlwaysToggle.addEventListener('change', ()=>{
+    saveSiteSettingPartial({sidebarAlwaysOpen:sidebarAlwaysToggle.checked}, sidebarAlwaysToggle.checked ? 'Sidebar will stay open' : 'Sidebar will auto-hide again');
+  });
   bindBrandingSettings();
   const f = document.getElementById('siteSettingsForm');
   if(!f) return;
@@ -3632,6 +3680,34 @@ function bindAdminResults(){
   if(exp) exp.addEventListener('click',()=>exportExamExcel(exp.getAttribute('data-exam'), exp.getAttribute('data-month')));
 }
 
+/* Applies a professional Excel look to a worksheet: bold white-on-blue
+   header row, thin borders on every cell, soft alternating row shading,
+   a header autofilter, and a frozen header row so it stays visible on scroll. */
+function styleWorksheetPro(ws){
+  if(!ws || !ws['!ref']) return;
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  const headerR = range.s.r;
+  const thin = {style:'thin', color:{rgb:'B7C6D9'}};
+  for(let R=range.s.r; R<=range.e.r; R++){
+    for(let C=range.s.c; C<=range.e.c; C++){
+      const addr = XLSX.utils.encode_cell({r:R,c:C});
+      if(!ws[addr]) ws[addr] = {t:'s', v:''};
+      const isHeader = R===headerR;
+      const stripe = (R-headerR)%2===0;
+      ws[addr].s = {
+        font: isHeader ? {bold:true, sz:11, color:{rgb:'FFFFFF'}} : {sz:10.5, color:{rgb:'222222'}},
+        fill: {patternType:'solid', fgColor:{rgb: isHeader ? '1F4E78' : (stripe?'FFFFFF':'EAF1FA')}},
+        alignment: {vertical:'center', horizontal: isHeader?'center':'left', wrapText:false},
+        border: {top:thin,bottom:thin,left:thin,right:thin}
+      };
+    }
+  }
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({s:{r:headerR,c:range.s.c}, e:{r:headerR,c:range.e.c}}) };
+  ws['!freeze'] = { xSplit:0, ySplit: headerR+1, topLeftCell: XLSX.utils.encode_cell({r:headerR+1,c:range.s.c}), activePane:'bottomLeft', state:'frozen' };
+  ws['!rows'] = ws['!rows'] || [];
+  ws['!rows'][headerR] = { hpt: 22 };
+}
+
 function exportExamExcel(examId, monthId){
   const isAll = examId===RESULTS_ALL;
   const exList = isAll ? examsForMonth(monthId) : [examById(examId)].filter(Boolean);
@@ -3665,6 +3741,7 @@ function exportExamExcel(examId, monthId){
     });
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = header.map((h,i)=> i<9 ? {wch: Math.max(12,h.length+2)} : {wch:10});
+    styleWorksheetPro(ws);
     sheets.push({ name: isAll ? (ex.examType||ex.nameEn||ex.nameHi||'Exam') : (ex.nameEn||'Exam'), ws });
   });
   if(sheets.length===0){ alert(isAll ? 'There are no attempts for this month yet.' : 'There are no attempts for this exam yet.'); return; }
@@ -3674,6 +3751,7 @@ function exportExamExcel(examId, monthId){
     const sumRows = [summaryHeader].concat(summaryItems.sort((a,b)=>a.t-b.t).map(x=>x.row));
     const sws = XLSX.utils.aoa_to_sheet(sumRows);
     sws['!cols'] = summaryHeader.map(h=>({wch: Math.max(12,h.length+2)}));
+    styleWorksheetPro(sws);
     XLSX.utils.book_append_sheet(wb, sws, sheetName('All exam types'));
   }
   sheets.forEach(sh=> XLSX.utils.book_append_sheet(wb, sh.ws, sheetName(sh.name)));
@@ -3717,6 +3795,14 @@ function adminMasterData(){
   const totalGuards = DB.guards.length;
   const { attend, notAttend } = masterDataAttendance();
   return `
+  ${monthNumsPresent.length===0?emptyState('calendar','No month added yet','Pehle "Months &amp; Exams" me month aur exam section add karein.'):
+  !selMonthRec?emptyState('calendar','This month/year has no data','Kripya koi aur Month/Year chunein.'):
+  examsInMonth.length===0?emptyState('doc','No exam section in this month','Is month me abhi koi exam section nahin hai.'):`
+  <div class="stat-row-3" style="margin-bottom:16px;">
+    <div class="stat-box clickable" data-mdbox="registered"><div class="n">${totalGuards}</div><div class="l">Registered security person</div></div>
+    <div class="stat-box clickable" data-mdbox="attend"><div class="n" style="color:var(--green);">${attend.length}</div><div class="l">Attend</div></div>
+    <div class="stat-box clickable" data-mdbox="notattend"><div class="n" style="color:var(--red);">${notAttend.length}</div><div class="l">Not Attend</div></div>
+  </div>`}
   <div class="card" style="margin-bottom:16px;">
     <div class="panel-head"><div><h2>Master Data</h2><p>Month, year aur exam type chuniye — registered, attend aur not-attend security persons dekhne ke liye.</p></div></div>
     <div class="field-row">
@@ -3737,15 +3823,7 @@ function adminMasterData(){
       </div>
     </div>
   </div>
-  ${adminMasterDataGuardSearch()}
-  ${monthNumsPresent.length===0?emptyState('calendar','No month added yet','Pehle "Months &amp; Exams" me month aur exam section add karein.'):
-  !selMonthRec?emptyState('calendar','This month/year has no data','Kripya koi aur Month/Year chunein.'):
-  examsInMonth.length===0?emptyState('doc','No exam section in this month','Is month me abhi koi exam section nahin hai.'):`
-  <div class="stat-row-3">
-    <div class="stat-box clickable" data-mdbox="registered"><div class="n">${totalGuards}</div><div class="l">Registered security person</div></div>
-    <div class="stat-box clickable" data-mdbox="attend"><div class="n" style="color:var(--green);">${attend.length}</div><div class="l">Attend</div></div>
-    <div class="stat-box clickable" data-mdbox="notattend"><div class="n" style="color:var(--red);">${notAttend.length}</div><div class="l">Not Attend</div></div>
-  </div>`}`;
+  ${adminMasterDataGuardSearch()}`;
 }
 /* Search-by-name/gate-pass/mobile box, embedded directly under the
    Month/Year/Exam-type filter (this used to be its own top-level
@@ -3881,6 +3959,7 @@ function exportMasterDataExcel(view){
   const rows = [header, ...dataRows];
   const ws = XLSX.utils.aoa_to_sheet(rows);
   ws['!cols'] = header.map(h=>({wch: Math.max(14,h.length+2)}));
+  styleWorksheetPro(ws);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, title.slice(0,28));
   const blob = new Blob([XLSX.write(wb,{bookType:'xlsx', type:'array'})], {type:'application/octet-stream'});
