@@ -409,6 +409,95 @@ select.select-inline{width:auto;display:inline-block;}
 }
 .month-lock-badge .ic{width:13px;height:13px;}
 
+
+/* ---- admin dashboard (animated charts) ---- */
+.dash{--dpurple:#8B7CF6;}
+.d-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:18px;}
+.d-head h2{margin:0 0 4px;font-size:22px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.d-head p{margin:0;color:var(--muted);font-size:13px;}
+.d-live{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--green);background:var(--green-soft);border:1px solid var(--green);border-radius:99px;padding:3px 9px;}
+.d-live i{width:7px;height:7px;border-radius:50%;background:var(--green);animation:dPulse 1.6s ease-out infinite;}
+.d-filter{display:flex;align-items:center;gap:8px;}
+.d-filter label{font-size:12px;color:var(--muted);font-weight:600;}
+.d-filter select{min-width:160px;}
+.d-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px;}
+.d-kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;position:relative;overflow:hidden;transition:.2s transform,.2s border-color,.2s box-shadow;}
+.d-kpi::after{content:"";position:absolute;right:-26px;top:-26px;width:90px;height:90px;border-radius:50%;background:var(--c);opacity:.08;}
+.d-kpi:hover{transform:translateY(-3px);border-color:var(--c);box-shadow:0 12px 26px -14px rgba(0,0,0,.6);}
+.d-kpi-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.d-kpi-ic{width:34px;height:34px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;color:var(--c);background:color-mix(in srgb,var(--c) 16%,transparent);flex-shrink:0;}
+.d-kpi-l{font-size:12px;color:var(--muted);font-weight:600;line-height:1.25;}
+.d-kpi-n{font-size:28px;font-weight:800;font-family:var(--font-mono);letter-spacing:-.5px;line-height:1.1;}
+.d-kpi-n small{font-size:15px;color:var(--muted);margin-left:2px;font-weight:700;}
+.d-kpi-sub{font-size:11.5px;color:var(--muted-2);margin-top:6px;}
+.d-kpi-bar{height:5px;border-radius:99px;background:var(--line);margin-top:10px;overflow:hidden;}
+.d-kpi-bar i{display:block;height:100%;border-radius:99px;background:var(--c);transform-origin:left;}
+.d-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:14px;}
+.d-card{padding:18px;min-width:0;}
+.d-card.span2{grid-column:span 2;}
+.d-card-h h3{margin:0;font-size:15px;}
+.d-card-h p{margin:3px 0 12px;font-size:12px;color:var(--muted);}
+.d-svg{width:100%;height:auto;display:block;overflow:visible;}
+.d-grid-line{stroke:var(--line);stroke-width:1;stroke-dasharray:3 4;}
+.d-axis{fill:var(--muted-2);font-size:10.5px;font-family:var(--font-mono);}
+.d-val{fill:var(--text);font-size:11px;font-weight:700;font-family:var(--font-mono);}
+.d-dot{fill:var(--panel);stroke:var(--blue);stroke-width:2.2;cursor:pointer;transition:r .15s;}
+.d-dot:hover{r:5.5;}
+.d-bar{transition:filter .15s;cursor:pointer;} .d-bar:hover{filter:brightness(1.18);}
+.d-mini{display:flex;gap:18px;font-size:12px;color:var(--muted);margin:-2px 0 6px;}
+.d-mini b{color:var(--text);font-family:var(--font-mono);font-size:15px;margin-right:3px;}
+.d-donut{position:relative;width:min(100%,190px);margin:4px auto 12px;}
+.d-donut svg{width:100%;display:block;}
+.d-seg{transition:stroke-width .15s;cursor:pointer;} .d-seg:hover{stroke-width:5.4;}
+.d-donut-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;}
+.d-donut-c b{font-size:26px;font-family:var(--font-mono);font-weight:800;line-height:1.1;}
+.d-donut-c span{font-size:11px;color:var(--muted);}
+.d-legend{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);}
+.d-legend span{display:flex;align-items:center;gap:8px;}
+.d-legend i{width:9px;height:9px;border-radius:3px;flex-shrink:0;}
+.d-legend b{margin-left:auto;color:var(--text);font-family:var(--font-mono);}
+.d-hbars{display:flex;flex-direction:column;gap:12px;}
+.d-hrow{display:grid;grid-template-columns:minmax(80px,1.1fr) 2fr auto;align-items:center;gap:10px;font-size:12.5px;}
+.d-hl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
+.d-htrack{height:9px;border-radius:99px;background:var(--line);overflow:hidden;}
+.d-hfill{display:block;height:100%;border-radius:99px;transform-origin:left;}
+.d-hv{font-family:var(--font-mono);font-weight:700;min-width:64px;text-align:right;}
+.d-hv small{color:var(--muted-2);font-weight:500;}
+.d-list{display:flex;flex-direction:column;}
+.d-li{display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--line);}
+.d-li:last-child{border-bottom:0;}
+.d-li-b{min-width:0;flex:1;} .d-li-b b{display:block;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.d-li-b small{color:var(--muted-2);font-size:11.5px;}
+.d-rank{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;background:var(--panel-2);border:1px solid var(--line-2);flex-shrink:0;}
+.d-rank.r1{background:var(--amber);color:#2a1a00;border-color:var(--amber);}
+.d-rank.r2{background:#c5cee0;color:#1b2234;border-color:#c5cee0;}
+.d-rank.r3{background:#cd8a55;color:#2a1608;border-color:#cd8a55;}
+.d-avatar{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;background:var(--blue-soft,rgba(91,141,239,.16));color:var(--blue);flex-shrink:0;}
+.d-score{font-family:var(--font-mono);font-size:12.5px;color:var(--muted);}
+.d-pill{font-family:var(--font-mono);font-weight:800;font-size:12px;padding:3px 9px;border-radius:99px;color:var(--c);background:color-mix(in srgb,var(--c) 15%,transparent);border:1px solid color-mix(in srgb,var(--c) 45%,transparent);}
+.d-empty{padding:34px 10px;text-align:center;color:var(--muted-2);font-size:13px;border:1px dashed var(--line-2);border-radius:var(--radius-sm);}
+@media (max-width:1000px){ .d-kpis{grid-template-columns:repeat(2,minmax(0,1fr));} .d-grid{grid-template-columns:repeat(2,minmax(0,1fr));} }
+@media (max-width:700px){ .d-grid{grid-template-columns:1fr;} .d-card.span2{grid-column:auto;} .d-kpi-n{font-size:23px;} .d-hrow{grid-template-columns:1fr auto;} .d-htrack{grid-column:1 / -1;order:3;} }
+/* animations only play when the Dashboard is opened (or its month filter is changed) */
+@keyframes dRise{from{opacity:0;transform:translateY(16px);}}
+@keyframes dBarUp{from{transform:scaleY(0);}}
+@keyframes dBarRight{from{transform:scaleX(0);}}
+@keyframes dFade{from{opacity:0;}}
+@keyframes dDraw{from{stroke-dashoffset:1;}}
+@keyframes dSeg{from{stroke-dasharray:0 100;}}
+@keyframes dPop{from{opacity:0;transform:scale(0);}}
+@keyframes dPulse{0%{box-shadow:0 0 0 0 rgba(63,191,127,.6);}100%{box-shadow:0 0 0 8px rgba(63,191,127,0);}}
+.dash-anim .d-rise{animation:dRise .65s cubic-bezier(.22,.9,.32,1) both;animation-delay:var(--d,0ms);}
+.dash-anim .d-kpi-bar i{animation:dBarRight 1.1s cubic-bezier(.22,.9,.32,1) both;animation-delay:calc(var(--d,0ms) + 250ms);}
+.dash-anim .d-bar{transform-box:fill-box;transform-origin:bottom;animation:dBarUp .9s cubic-bezier(.22,.9,.32,1) both;animation-delay:calc(600ms + var(--i,0)*90ms);}
+.dash-anim .d-val{animation:dFade .5s ease both;animation-delay:calc(1300ms + var(--i,0)*90ms);}
+.dash-anim .d-hfill{animation:dBarRight 1s cubic-bezier(.22,.9,.32,1) both;animation-delay:calc(700ms + var(--i,0)*100ms);}
+.dash-anim .d-line{stroke-dasharray:1;animation:dDraw 1.6s ease-in-out both;animation-delay:.55s;}
+.dash-anim .d-area{animation:dFade 1.2s ease both;animation-delay:1.2s;}
+.dash-anim .d-dot{transform-box:fill-box;transform-origin:center;animation:dPop .4s cubic-bezier(.3,1.6,.5,1) both;animation-delay:calc(1.1s + var(--i,0)*70ms);}
+.dash-anim .d-seg{animation:dSeg 1.3s cubic-bezier(.22,.9,.32,1) both;animation-delay:calc(650ms + var(--i,0)*180ms);}
+@media (prefers-reduced-motion:reduce){ .dash-anim *{animation:none !important;} }
+
 /* ---- exam security mode (no copy / screenshot deterrent) ---- */
 body.secure-mode, body.secure-mode *{
   -webkit-user-select:none!important;-moz-user-select:none!important;-ms-user-select:none!important;user-select:none!important;
@@ -1022,6 +1111,12 @@ const ICONS = {
   image:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg>',
   empty:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M8 14h2"/></svg>',
   trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13"/><path d="M10 11v6M14 11v6"/></svg>',
+  dashboard:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
+  users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 010 6.8M18 14.4c2.2.7 3.5 2.6 3.5 5.6"/></svg>',
+  trend:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg>',
+  award:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="6"/><path d="M8.5 14L7 22l5-3 5 3-1.5-8"/></svg>',
+  target:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg>',
+  refresh:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 00-14.5-4M4 13a8 8 0 0014.5 4"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>',
   lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>',
   unlock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 017.6-1.8"/></svg>',
   gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1M18.4 18.4l-2.1-2.1M7.7 7.7L5.6 5.6"/></svg>',
@@ -1722,6 +1817,7 @@ function render(){
   app.innerHTML = topbarHtml() + adminSidebarHtml() + '<main><div class="wrap'+(isNewScreen?' page-enter':'')+'" id="mainwrap"></div></main>' + (SITE_SETTINGS.footerEnabled!==false ? footerHtml() : '');
   document.body.classList.toggle('admin-sidebar-open', !!(SESSION && SESSION.role==='admin' && S.screen==='admin-dashboard' && S.adminNavOpen));
   const mount = document.getElementById('mainwrap');
+  window.__DASH_NEW = isNewScreen;
   mount.innerHTML = renderScreen();
   syncBgMedia();
   ensureVideosPlay();
@@ -2453,14 +2549,14 @@ function bindAdminAuth(){
       if(error) throw error;
       if(!data || data.length===0){ patch({formError:'Incorrect mobile number or password.'}); return; }
       setSession({role:'admin', mobile, name: data[0].name});
-      enterApp('admin-dashboard',{adminTab:'months', adminNavOpen:true});
+      enterApp('admin-dashboard',{adminTab:'dashboard', adminNavOpen:true});
     });
   });
 }
 
 /* ============ ADMIN DASHBOARD ============ */
 function screenAdminDashboard(){
-  const tab = S.adminTab || 'months';
+  const tab = S.adminTab||'dashboard';
   return `<div class="admin-layout">${adminContent(tab)}</div>`;
 }
 /* Full-height slide-in sidebar (admin only). Rendered as global chrome
@@ -2468,9 +2564,10 @@ function screenAdminDashboard(){
    admin sub-screen and isn't wiped out by screen-to-screen re-renders. */
 function adminSidebarHtml(){
   if(!(SESSION && SESSION.role==='admin' && S.screen==='admin-dashboard')) return '';
-  const tab = S.adminTab || 'months';
+  const tab = S.adminTab||'dashboard';
   const navOpen = !!S.adminNavOpen;
   const nav = [
+    ['dashboard',icon('dashboard',15),'Dashboard'],
     ['months',icon('calendar',15),'Months &amp; Exams'],
     ['masterdata',icon('chart',15),'Master Data'],
     ['results',icon('clipboard',15),'Results'],
@@ -2484,24 +2581,271 @@ function adminSidebarHtml(){
   </div>`;
 }
 function adminContent(tab){
+  if(tab==='dashboard') return adminDashboard();
   if(tab==='masterdata') return adminMasterData();
   if(tab==='months') return adminMonths();
   if(tab==='exam') return adminExamQuestions();
   if(tab==='results') return adminResults();
   if(tab==='guardprofile') return adminGuardProfile();
   if(tab==='settings') return adminSiteSettings();
-  return adminMonths();
+  return adminDashboard();
 }
 function bindAdminDashboard(){
-  bindAdminContent(S.adminTab||'months');
+  bindAdminContent(S.adminTab||'dashboard');
 }
 function bindAdminContent(tab){
+  if(tab==='dashboard') return bindAdminDashboard_();
   if(tab==='masterdata') return bindAdminMasterData();
   if(tab==='months') return bindAdminMonths();
   if(tab==='exam') return bindAdminExamQuestions();
   if(tab==='results') return bindAdminResults();
   if(tab==='guardprofile') return bindAdminGuardProfile();
   if(tab==='settings') return bindAdminSiteSettings();
+}
+
+/* ============ ADMIN: DASHBOARD (animated charts + numbers) ============ */
+const DASH_PASS_PCT = 60;          // a score at or above this % counts as "passed" on the dashboard
+let DASH_REPLAY = false;           // set when the month filter changes so the animation plays again
+const DASH_COL = { amber:'var(--amber)', blue:'var(--blue)', green:'var(--green)', red:'var(--red)', violet:'#8B7CF6' };
+function dashPct(a){ return a.total>0 ? (a.score/a.total)*100 : 0; }
+function dashFmt(n,dec){ return Number(n).toLocaleString('en-IN',{minimumFractionDigits:dec||0,maximumFractionDigits:dec||0}); }
+function dashColorFor(p){ return p>=75 ? DASH_COL.green : (p>=50 ? DASH_COL.amber : DASH_COL.red); }
+function dashAgo(ts){
+  const s = Math.max(1, Math.floor((Date.now()-ts)/1000));
+  if(s<60) return 'just now';
+  const m = Math.floor(s/60); if(m<60) return m+' min ago';
+  const h = Math.floor(m/60); if(h<24) return h+' hr ago';
+  const d = Math.floor(h/24); if(d<30) return d+' day'+(d>1?'s':'')+' ago';
+  return fmtDateTime(ts).date;
+}
+function dashEmpty(msg){ return `<div class="d-empty">${esc(msg||'No data yet')}</div>`; }
+function dashShort(s,n){ s = String(s||'').replace(/\s+/g,' ').trim(); return s.length>n ? s.slice(0,n-1)+'…' : s; }
+
+function dashKpi(i, ic, color, label, value, dec, suffix, sub, barPct){
+  return `<div class="d-kpi d-rise" style="--d:${i*70}ms;--c:${color}">
+    <div class="d-kpi-top"><span class="d-kpi-ic">${icon(ic,18)}</span><span class="d-kpi-l">${label}</span></div>
+    <div class="d-kpi-n"><span data-count="${value}" data-dec="${dec}">${dashFmt(value,dec)}</span>${suffix?`<small>${suffix}</small>`:''}</div>
+    <div class="d-kpi-sub">${sub}</div>
+    ${barPct!=null?`<div class="d-kpi-bar"><i style="width:${Math.max(0,Math.min(100,barPct))}%"></i></div>`:''}
+  </div>`;
+}
+
+/* smooth area/line chart */
+function dashAreaChart(vals, labels){
+  const W=560,H=230,L=34,R=14,T=14,B=30, iw=W-L-R, ih=H-T-B;
+  const maxV = Math.max(1,...vals), top = maxV<=4 ? 4 : Math.ceil(maxV/4)*4;
+  const n = vals.length;
+  const x = i => L + (n===1 ? iw/2 : i*iw/(n-1));
+  const y = v => T + ih - (v/top)*ih;
+  const pts = vals.map((v,i)=>[x(i),y(v)]);
+  const clampY = v => Math.max(T, Math.min(T+ih, v));
+  let d = '';
+  pts.forEach((p,i)=>{
+    if(i===0){ d += `M${p[0].toFixed(1)},${p[1].toFixed(1)}`; return; }
+    const p0=pts[i-2]||pts[i-1], p1=pts[i-1], p2=p, p3=pts[i+1]||p2;
+    const c1x=p1[0]+(p2[0]-p0[0])/6, c1y=clampY(p1[1]+(p2[1]-p0[1])/6);
+    const c2x=p2[0]-(p3[0]-p1[0])/6, c2y=clampY(p2[1]-(p3[1]-p1[1])/6);
+    d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  });
+  const area = d + ` L${pts[n-1][0].toFixed(1)},${T+ih} L${pts[0][0].toFixed(1)},${T+ih} Z`;
+  let grid = '';
+  for(let g=0; g<=4; g++){
+    const v = top*g/4, gy = y(v);
+    grid += `<line x1="${L}" x2="${W-R}" y1="${gy}" y2="${gy}" class="d-grid-line"/><text x="${L-8}" y="${gy+3.5}" text-anchor="end" class="d-axis">${Math.round(v)}</text>`;
+  }
+  const step = n>9 ? 2 : 1;
+  const xl = labels.map((lb,i)=> (i%step===0 || i===n-1) ? `<text x="${x(i)}" y="${H-8}" text-anchor="middle" class="d-axis">${esc(lb)}</text>` : '').join('');
+  const dots = pts.map((p,i)=>`<circle class="d-dot" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.6" style="--i:${i}"><title>${esc(labels[i])}: ${vals[i]} attempt${vals[i]===1?'':'s'}</title></circle>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" class="d-svg" role="img" aria-label="Attempts per day">
+    <defs><linearGradient id="dgArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--blue)" stop-opacity=".45"/><stop offset="1" stop-color="var(--blue)" stop-opacity="0"/></linearGradient></defs>
+    ${grid}${xl}
+    <path d="${area}" fill="url(#dgArea)" class="d-area"/>
+    <path d="${d}" fill="none" stroke="var(--blue)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" pathLength="1" class="d-line"/>
+    ${dots}
+  </svg>`;
+}
+
+/* vertical columns, values are 0-100 (%) */
+function dashColumns(items){
+  const W=560,H=230,L=34,R=14,T=18,B=30, iw=W-L-R, ih=H-T-B;
+  const n = items.length, slot = iw/n, bw = Math.min(46, slot*0.58);
+  const y = v => T + ih - (v/100)*ih;
+  let grid = '';
+  [0,25,50,75,100].forEach(v=>{ const gy=y(v); grid += `<line x1="${L}" x2="${W-R}" y1="${gy}" y2="${gy}" class="d-grid-line"/><text x="${L-8}" y="${gy+3.5}" text-anchor="end" class="d-axis">${v}%</text>`; });
+  const bars = items.map((it,i)=>{
+    const cx = L + slot*i + slot/2, h = Math.max(0,(it.value/100)*ih), by = T+ih-h;
+    const col = it.none ? 'var(--line-2)' : dashColorFor(it.value);
+    return `<g>
+      <rect class="d-bar" x="${(cx-bw/2).toFixed(1)}" y="${by.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(it.none?3:0,h).toFixed(1)}" rx="6" fill="${col}" style="--i:${i}"><title>${esc(it.label)}: ${it.none?'no attempts':it.value.toFixed(1)+'% avg · '+it.n+' attempt'+(it.n===1?'':'s')}</title></rect>
+      <text x="${cx.toFixed(1)}" y="${(by-6).toFixed(1)}" text-anchor="middle" class="d-val" style="--i:${i}">${it.none?'–':Math.round(it.value)+'%'}</text>
+      <text x="${cx.toFixed(1)}" y="${H-8}" text-anchor="middle" class="d-axis">${esc(it.label)}</text>
+    </g>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" class="d-svg" role="img" aria-label="Average score per month">${grid}${bars}</svg>`;
+}
+
+/* donut / gauge. segs: [{label,value,color}] */
+function dashDonut(segs, big, small){
+  const total = segs.reduce((s,x)=>s+x.value,0);
+  let acc = 0;
+  const arcs = segs.filter(s=>s.value>0).map((s,i,arr)=>{
+    const p = s.value/total*100, len = Math.max(0.5, p-(arr.length>1?1.4:0));
+    const el = `<circle class="d-seg" cx="21" cy="21" r="15.9155" fill="none" stroke="${s.color}" stroke-width="4.6" stroke-linecap="butt" stroke-dasharray="${len.toFixed(2)} ${(100-len).toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}" style="--i:${i}"><title>${esc(s.label)}: ${s.value}</title></circle>`;
+    acc += p; return el;
+  }).join('');
+  return `<div class="d-donut"><svg viewBox="0 0 42 42" role="img" aria-label="${esc(small||'chart')}">
+      <g transform="rotate(-90 21 21)"><circle cx="21" cy="21" r="15.9155" fill="none" stroke="var(--line)" stroke-width="4.6"/>${arcs}</g></svg>
+    <div class="d-donut-c"><b>${big}</b><span>${esc(small||'')}</span></div></div>`;
+}
+function dashHBars(rows){
+  return `<div class="d-hbars">${rows.map((r,i)=>`<div class="d-hrow d-rise" style="--d:${300+i*80}ms">
+    <div class="d-hl" title="${esc(r.label)}">${esc(r.label)}</div>
+    <div class="d-htrack"><i class="d-hfill" style="width:${Math.max(2,Math.min(100,r.pct)).toFixed(1)}%;background:${r.color};--i:${i}"></i></div>
+    <div class="d-hv">${r.text}</div></div>`).join('')}</div>`;
+}
+
+function adminDashboard(){
+  const monthSel = (S.dashMonth && monthById(S.dashMonth)) ? S.dashMonth : '';
+  const animate = !!(window.__DASH_NEW || DASH_REPLAY); DASH_REPLAY = false;
+  const months = monthsSorted();
+  const exams = monthSel ? examsForMonth(monthSel) : DB.exams;
+  const exIds = new Set(exams.map(e=>e.id));
+  const atts = DB.attempts.filter(a=>exIds.has(a.examId));
+  const guards = DB.guards;
+  const nG = guards.length;
+
+  /* ---- headline numbers ---- */
+  const attemptedGuards = new Set(atts.map(a=>a.guardMobile));
+  const partPct = nG ? attemptedGuards.size/nG*100 : 0;
+  const sumScore = atts.reduce((s,a)=>s+(a.score||0),0), sumTotal = atts.reduce((s,a)=>s+(a.total||0),0);
+  const avgPct = sumTotal ? sumScore/sumTotal*100 : 0;
+  const passed = atts.filter(a=>dashPct(a)>=DASH_PASS_PCT).length;
+  const passPct = atts.length ? passed/atts.length*100 : 0;
+  const retakes = atts.filter(a=>a.approvedRetake).length;
+  const lockedExams = DB.exams.filter(e=>e.locked).length, lockedMonths = DB.months.filter(m=>m.locked).length;
+  const nQ = exams.reduce((s,e)=>s+publishedQuestionsForExam(e.id).length,0);
+
+  const kpis = [
+    dashKpi(0,'users',DASH_COL.blue,'Registered guards',nG,0,'',`${attemptedGuards.size} attempted ${monthSel?'this month':'so far'}`,null),
+    dashKpi(1,'doc',DASH_COL.amber,'Exam sections',exams.length,0,'',`${nQ} published question${nQ===1?'':'s'}`,null),
+    dashKpi(2,'clipboard',DASH_COL.violet,'Total attempts',atts.length,0,'',`${retakes} re-attempt${retakes===1?'':'s'} approved`,null),
+    dashKpi(3,'target',DASH_COL.green,'Participation',partPct,1,'%',`${attemptedGuards.size} of ${nG} guards`,partPct),
+    dashKpi(4,'trend',DASH_COL.blue,'Average score',avgPct,1,'%',`${sumScore} / ${sumTotal} marks`,avgPct),
+    dashKpi(5,'award',DASH_COL.green,'Pass rate',passPct,1,'%',`${passed} passed · pass mark ${DASH_PASS_PCT}%`,passPct),
+    dashKpi(6,'lock',DASH_COL.red,'Locked exams',lockedExams,0,'',`of ${DB.exams.length} exams · ${lockedMonths} month${lockedMonths===1?'':'s'} locked`,DB.exams.length?lockedExams/DB.exams.length*100:0),
+    dashKpi(7,'refresh',DASH_COL.amber,'Pending (not attempted)',Math.max(0,nG-attemptedGuards.size),0,'',`guards yet to take an exam`,nG?(nG-attemptedGuards.size)/nG*100:0),
+  ].join('');
+
+  /* ---- attempts per day, last 14 days ---- */
+  const days = [];
+  const today = new Date(); today.setHours(0,0,0,0);
+  for(let i=13;i>=0;i--){ const d = new Date(today); d.setDate(d.getDate()-i); days.push(d); }
+  const dayVals = days.map(d=>{ const s=d.getTime(), e=s+86400000; return atts.filter(a=>a.submittedAt>=s && a.submittedAt<e).length; });
+  const dayLabels = days.map(d=>d.getDate()+' '+MONTH_NAMES[d.getMonth()].slice(0,3));
+  const last14 = dayVals.reduce((a,b)=>a+b,0);
+  const bestDay = Math.max(0,...dayVals);
+
+  /* ---- month-wise average (always every month, last 8) ---- */
+  const monthItems = months.slice(-8).map(m=>{
+    const ids = new Set(examsForMonth(m.id).map(e=>e.id));
+    const ma = DB.attempts.filter(a=>ids.has(a.examId));
+    const st = ma.reduce((s,a)=>s+(a.score||0),0), tt = ma.reduce((s,a)=>s+(a.total||0),0);
+    return { label:(MONTH_NAMES[m.monthNum]||m.label).slice(0,3)+' '+String(m.year||'').slice(2), value: tt?st/tt*100:0, n: ma.length, none: !ma.length };
+  });
+
+  /* ---- score distribution ---- */
+  const buckets = [
+    {label:'Excellent (80%+)', value:atts.filter(a=>dashPct(a)>=80).length, color:DASH_COL.green},
+    {label:'Good (60–79%)', value:atts.filter(a=>dashPct(a)>=60&&dashPct(a)<80).length, color:DASH_COL.blue},
+    {label:'Average (40–59%)', value:atts.filter(a=>dashPct(a)>=40&&dashPct(a)<60).length, color:DASH_COL.amber},
+    {label:'Needs work (<40%)', value:atts.filter(a=>dashPct(a)<40).length, color:DASH_COL.red},
+  ];
+
+  /* ---- exam-type performance ---- */
+  const byType = {};
+  atts.forEach(a=>{ const ex = examById(a.examId); const t = (ex&&ex.examType)||'Other'; (byType[t] = byType[t]||{s:0,t:0,n:0}); byType[t].s+=a.score||0; byType[t].t+=a.total||0; byType[t].n++; });
+  const typeRows = Object.keys(byType).map(t=>{ const o=byType[t], p=o.t?o.s/o.t*100:0; return {label:t, pct:p, color:dashColorFor(p), text:`${p.toFixed(0)}% <small>· ${o.n}</small>`}; }).sort((a,b)=>b.pct-a.pct);
+
+  /* ---- guards by post ---- */
+  const byPost = {};
+  guards.forEach(g=>{ const p=(g.post||'').trim()||'Not set'; byPost[p]=(byPost[p]||0)+1; });
+  const postArr = Object.keys(byPost).map(p=>({p,c:byPost[p]})).sort((a,b)=>b.c-a.c).slice(0,6);
+  const postMax = Math.max(1,...postArr.map(x=>x.c));
+  const postRows = postArr.map((x,i)=>({label:x.p, pct:x.c/postMax*100, color:[DASH_COL.blue,DASH_COL.violet,DASH_COL.amber,DASH_COL.green,DASH_COL.red,DASH_COL.blue][i], text:`${x.c}`}));
+
+  /* ---- hardest questions (lowest accuracy) ---- */
+  const qStat = {};
+  exams.forEach(ex=>{
+    const qs = publishedQuestionsForExam(ex.id);
+    atts.filter(a=>a.examId===ex.id && Array.isArray(a.answers)).forEach(a=>{
+      qs.forEach((q,i)=>{ const o = qStat[q.id] = qStat[q.id] || {q, ex, tot:0, ok:0}; o.tot++; if(a.answers[i]===q.correct) o.ok++; });
+    });
+  });
+  const hardest = Object.values(qStat).filter(o=>o.tot>0).map(o=>Object.assign(o,{acc:o.ok/o.tot*100})).sort((a,b)=>a.acc-b.acc||b.tot-a.tot).slice(0,5);
+
+  /* ---- top performers (latest attempt per exam, per guard) ---- */
+  const latest = {};
+  atts.forEach(a=>{ const k=a.guardMobile+'|'+a.examId; if(!latest[k] || a.submittedAt>latest[k].submittedAt) latest[k]=a; });
+  const perGuard = {};
+  Object.values(latest).forEach(a=>{ const o = perGuard[a.guardMobile] = perGuard[a.guardMobile] || {s:0,t:0,n:0}; o.s+=a.score||0; o.t+=a.total||0; o.n++; });
+  const top = Object.keys(perGuard).map(m=>{ const o=perGuard[m], g=findGuard(m); return {m, name:g?g.name:m, post:g?g.post:'', pct:o.t?o.s/o.t*100:0, n:o.n}; }).sort((a,b)=>b.pct-a.pct||b.n-a.n).slice(0,5);
+
+  /* ---- recent activity ---- */
+  const recent = atts.slice().sort((a,b)=>b.submittedAt-a.submittedAt).slice(0,6);
+
+  const card = (cls, title, sub, body, delay) => `<div class="card d-card d-rise ${cls}" style="--d:${delay}ms"><div class="d-card-h"><div><h3>${title}</h3><p>${sub}</p></div></div>${body}</div>`;
+
+  return `
+  <div class="dash ${animate?'dash-anim':''}" id="dashRoot">
+    <div class="d-head d-rise">
+      <div><h2>Dashboard <span class="d-live"><i></i>Live</span></h2>
+        <p>Overview of guards, exams and results${monthSel?` — ${esc(monthById(monthSel).label)}`:' — all months'}.</p></div>
+      <div class="d-filter"><label for="dashMonthSel">Month</label>
+        <select id="dashMonthSel"><option value="">All months</option>${months.slice().reverse().map(m=>`<option value="${m.id}" ${m.id===monthSel?'selected':''}>${esc(m.label)}</option>`).join('')}</select></div>
+    </div>
+    <div class="d-kpis">${kpis}</div>
+    <div class="d-grid">
+      ${card('span2','Attempts trend','Exams submitted per day · last 14 days',
+        atts.length ? `<div class="d-mini"><span><b>${last14}</b> in 14 days</span><span><b>${bestDay}</b> best day</span></div>${dashAreaChart(dayVals,dayLabels)}` : dashEmpty('No attempts yet'), 350)}
+      ${card('','Score distribution','How guards performed',
+        atts.length ? `${dashDonut(buckets, atts.length, 'attempts')}<div class="d-legend">${buckets.map(b=>`<span><i style="background:${b.color}"></i>${b.label}<b>${b.value}</b></span>`).join('')}</div>` : dashEmpty('No attempts yet'), 420)}
+      ${card('','Month-wise average score','Average % across all attempts, last 8 months',
+        monthItems.length ? dashColumns(monthItems) : dashEmpty('No months added yet'), 490)}
+      ${card('','Exam type performance','Average score by exam type',
+        typeRows.length ? dashHBars(typeRows) : dashEmpty('No attempts yet'), 560)}
+      ${card('','Participation','Guards who attempted at least one exam',
+        nG ? `${dashDonut([{label:'Attempted',value:attemptedGuards.size,color:DASH_COL.green},{label:'Not attempted',value:Math.max(0,nG-attemptedGuards.size),color:DASH_COL.amber}], partPct.toFixed(0)+'%', 'participation')}<div class="d-legend"><span><i style="background:${DASH_COL.green}"></i>Attempted<b>${attemptedGuards.size}</b></span><span><i style="background:${DASH_COL.amber}"></i>Not attempted<b>${Math.max(0,nG-attemptedGuards.size)}</b></span></div>` : dashEmpty('No guards registered yet'), 630)}
+      ${card('span2','Toughest questions','Lowest accuracy first (from submitted answers)',
+        hardest.length ? dashHBars(hardest.map(h=>({label:dashShort(h.q.textEn||h.q.textHi,70)+(h.ex&&h.ex.examType?`  ·  ${h.ex.examType}`:''), pct:h.acc, color:dashColorFor(h.acc), text:`${h.acc.toFixed(0)}% <small>· ${h.tot}</small>`}))) : dashEmpty('No answered questions yet'), 700)}
+      ${card('','Guards by post','Registered guards per post',
+        postRows.length ? dashHBars(postRows) : dashEmpty('No guards registered yet'), 770)}
+      ${card('','Top performers','Highest overall score %',
+        top.length ? `<div class="d-list">${top.map((t,i)=>`<div class="d-li d-rise" style="--d:${850+i*80}ms"><span class="d-rank r${i+1}">${i+1}</span><div class="d-li-b"><b>${esc(t.name)}</b><small>${esc(t.post||'')} · ${t.n} exam${t.n===1?'':'s'}</small></div><span class="d-pill" style="--c:${dashColorFor(t.pct)}">${t.pct.toFixed(0)}%</span></div>`).join('')}</div>` : dashEmpty('No results yet'), 840)}
+      ${card('span2','Recent activity','Latest submitted exams',
+        recent.length ? `<div class="d-list">${recent.map((a,i)=>{ const g=findGuard(a.guardMobile), ex=examById(a.examId), p=dashPct(a); return `<div class="d-li d-rise" style="--d:${900+i*80}ms"><span class="d-avatar">${esc((g&&g.name?g.name:'?').trim().charAt(0).toUpperCase())}</span><div class="d-li-b"><b>${esc(g?g.name:a.guardMobile)}</b><small>${esc(ex?(ex.examType||examLabel(ex)):'-')} · ${dashAgo(a.submittedAt)}</small></div><span class="d-score">${a.score}/${a.total}</span><span class="d-pill" style="--c:${dashColorFor(p)}">${p.toFixed(0)}%</span></div>`; }).join('')}</div>` : dashEmpty('No activity yet'), 910)}
+    </div>
+  </div>`;
+}
+function bindAdminDashboard_(){
+  const root = document.getElementById('dashRoot'); if(!root) return;
+  const sel = document.getElementById('dashMonthSel');
+  if(sel) sel.addEventListener('change',()=>{ DASH_REPLAY = true; patch({dashMonth: sel.value}); });
+  if(!root.classList.contains('dash-anim')) return;
+  if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  /* count-up for every headline number */
+  const els = Array.from(root.querySelectorAll('[data-count]'));
+  const t0 = performance.now(), DUR = 1200;
+  const fmt = (v,dec)=> Number(v).toLocaleString('en-IN',{minimumFractionDigits:dec,maximumFractionDigits:dec});
+  els.forEach(el=>{ el.textContent = fmt(0, parseInt(el.getAttribute('data-dec'),10)||0); });
+  function tick(now){
+    const k = Math.min(1,(now-t0)/DUR), e = 1-Math.pow(1-k,3);
+    els.forEach(el=>{
+      const dec = parseInt(el.getAttribute('data-dec'),10)||0, target = parseFloat(el.getAttribute('data-count'))||0;
+      el.textContent = fmt(target*e, dec);
+    });
+    if(k<1 && document.body.contains(root)) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
 }
 
 /* --- Admin: Site settings (footer / contact, editable) --- */
@@ -4170,9 +4514,9 @@ loadAllData().then(loadSiteSettings).then(()=>{
 function isSafeToRepaint(){
   if(['guard-dashboard','guard-month','guard-myexams'].includes(S.screen)) return true;
   if(S.screen==='admin-dashboard'){
-    const tab = S.adminTab||'months';
+    const tab = S.adminTab||'dashboard';
     if(tab==='guardprofile') return !S.showResetPin; // don't wipe an in-progress PIN reset
-    if(!['months','masterdata','results'].includes(tab)) return false; // exam/question editor has its own draft state
+    if(!['dashboard','months','masterdata','results'].includes(tab)) return false; // exam/question editor has its own draft state
     if(S.adminMonthId || S.adminExamId) return false; // inside a month/exam drill-down with its own add-form
     return true;
   }
