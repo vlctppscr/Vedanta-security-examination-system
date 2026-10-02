@@ -808,6 +808,13 @@ html.has-box-alpha .hero.hero-boxbg .role-card{ background:var(--hero-box-bg); }
 .hero-boxes{ position:absolute; inset:0; z-index:1; pointer-events:none; }
 .hbox{ position:absolute; overflow:hidden; pointer-events:none; background:var(--panel-2); box-shadow:0 18px 40px -18px rgba(0,0,0,.55); }
 .hbox video, .hbox .hbox-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background-size:cover; background-position:center; background-repeat:no-repeat; }
+/* ---- hover zoom on the home-page picture/video (same feel as the carousel card: smooth 300ms, scale 1.05) ---- */
+.hbox:not(.htext):not(.hbox-edit){ pointer-events:auto; transition:box-shadow .3s ease; }
+.hbox:not(.htext):not(.hbox-edit) video, .hbox:not(.htext):not(.hbox-edit) .hbox-img{ transition:transform .3s ease; will-change:transform; }
+@media (hover:hover){
+  .hbox:not(.htext):not(.hbox-edit):hover{ box-shadow:0 22px 48px -16px rgba(0,0,0,.65); }
+  .hbox:not(.htext):not(.hbox-edit):hover video, .hbox:not(.htext):not(.hbox-edit):hover .hbox-img{ transform:scale(1.05); }
+}
 .hbox-empty{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--muted-2); text-align:center; padding:8px; }
 .hbox-edit{ pointer-events:auto; outline:1.5px dashed rgba(240,169,59,.65); outline-offset:-1.5px; }
 .hbox-toolbar{ position:absolute; top:0; left:0; right:0; height:28px; display:flex; align-items:center; gap:4px; padding:0 4px; background:rgba(10,15,28,.68); cursor:grab; z-index:2; }
@@ -2120,7 +2127,7 @@ function screenGuardDashboard(){
   ${months.length===0 ? emptyState('empty','No month has been set yet','The admin will add this month\'s exams soon. Please check back later.') :
   `<div class="grid">${months.map(m=>{
     const exams = examsForMonth(m.id);
-    const unseenCount = exams.filter(ex=>!seen.includes(ex.id)).length;
+    const unseenCount = exams.filter(ex=>!ex.locked && !seen.includes(ex.id)).length;
     const locked = !!m.locked;
     return `<div class="tile ${locked?'tile-locked':''}" data-month="${m.id}" ${locked?'data-locked="1"':''}>
       <div class="tile-top"><div class="month-icon">${icon('calendar',17)}</div>${locked?`<div class="month-lock-badge" title="Locked by admin">${icon('lock',13)}</div>`:(unseenCount>0?`<div class="notif-badge">${icon('bell',13)} ${unseenCount}</div>`:'')}</div>
@@ -2138,7 +2145,7 @@ function bindGuardDashboard(){
     const monthId = el.getAttribute('data-month');
     const g = findGuard(SESSION.mobile);
     if(g){
-      const exIds = examsForMonth(monthId).map(e=>e.id);
+      const exIds = examsForMonth(monthId).filter(e=>!e.locked).map(e=>e.id);
       const newSeen = Array.from(new Set([...(g.seenExams||[]), ...exIds]));
       if(newSeen.length !== (g.seenExams||[]).length){
         g.seenExams = newSeen;
@@ -2168,10 +2175,13 @@ function screenGuardMonth(){
     else if(att.approvedRetake){ badge = `<span class="badge badge-open">Re-attempt allowed</span>`; sub = `Last score: ${att.score}/${att.total}`; }
     else { badge = `<span class="done-tick" title="Exam completed">${icon('check',12)}</span>`; sub = `Score: ${att.score}/${att.total}`; }
     const dropped = ex.createdAt ? `Dropped on ${fmtDateTime(ex.createdAt).date}` : '';
-    return `<div class="tile" data-exam="${ex.id}">
+    // an exam locked by the admin can't be started/re-attempted; an already-completed one can still be reviewed
+    const exLocked = !!ex.locked && (!att || att.approvedRetake);
+    if(exLocked){ badge = `<div class="month-lock-badge" title="Locked by admin">${icon('lock',13)}</div>`; sub = 'Locked by admin'; }
+    return `<div class="tile ${exLocked?'tile-locked':''}" data-exam="${ex.id}" ${exLocked?'data-locked="1"':''}>
       <div class="tile-top"><div class="month-icon">${icon('doc',17)}</div>${badge}</div>
       <h3>${examHeadlineHtml(ex)}${examTypeChip(ex)}</h3>
-      <div class="sub">${sub}${dropped?` · ${dropped}`:''}</div>
+      <div class="sub">${sub}${(dropped&&!exLocked)?` · ${dropped}`:''}</div>
     </div>`;
   }).join('')}</div>`}
   `;
@@ -2181,6 +2191,8 @@ function bindGuardMonth(){
     el.addEventListener('click',()=>{
       const examId = el.getAttribute('data-exam');
       const att = latestAttempt(SESSION.mobile, examId);
+      const exNow = examById(examId);
+      if(exNow && exNow.locked && (!att || att.approvedRetake)){ alert('This exam is locked by the admin. Please check back later.'); return; }
       if(att && !att.approvedRetake){
         go('guard-review', {attemptId: att.id, from:'guard-month', monthId:S.monthId});
       } else {
@@ -3299,8 +3311,11 @@ function adminMonthDetail(monthId){
       const typeChip = ex.examType ? `<span class="chip" style="margin-left:8px;">${esc(ex.examType)}</span>` : '';
       const f2 = examShowFlags(ex);
       const langChip = `<span class="chip" style="margin-left:8px;" title="Security person site pr headline">${f2.en&&f2.hi?'EN+HI':f2.en?'EN only':'HI only'}</span>`;
+      const exLocked = !!ex.locked;
       return `<div class="item-row"><div class="info"><b>${esc(ex.nameEn)} / ${esc(ex.nameHi)}${typeChip}${langChip}</b><span>${qc} question${qc===1?'':'s'}${dropped}</span></div>
-      <div class="actions"><button class="btn btn-sm" data-openexam="${ex.id}">Manage questions →</button>
+      <div class="actions">
+      <button class="lock-toggle ${exLocked?'is-locked':'is-unlocked'}" data-lockexam="${ex.id}" title="${exLocked?'Locked — click to unlock for security persons':'Unlocked — click to lock for security persons'}">${icon(exLocked?'lock':'unlock',15)}</button>
+      <button class="btn btn-sm" data-openexam="${ex.id}">Manage questions →</button>
       <button class="btn btn-sm btn-danger" data-delexam="${ex.id}">Delete</button></div></div>`;
     }).join('')}
   </div>`;
@@ -3335,6 +3350,26 @@ function bindAdminMonthDetail(){
       showConfirmToast('Exam section added');
     });
   });
+  document.querySelectorAll('[data-lockexam]').forEach(el=>el.addEventListener('click',()=>{
+    const id = el.getAttribute('data-lockexam');
+    const ex = examById(id);
+    if(!ex) return;
+    const newVal = !ex.locked;
+    el.disabled = true;
+    dbWrite(sb.from('exams').update({locked:newVal}).eq('id', id)).then(({ok,error})=>{
+      if(!ok){
+        console.error(error);
+        const missing = error && /locked/i.test(error.message||'') && /column|schema/i.test(error.message||'');
+        alert('Could not update the exam lock status.\n\n'+(missing
+          ? 'The "exams" table has no "locked" column yet. Run this once in the Supabase SQL editor:\n\nalter table public.exams add column if not exists locked boolean default false;'
+          : (error&&error.message?error.message:'Please try again.')));
+        el.disabled=false; return;
+      }
+      ex.locked = newVal;
+      patch({});
+      showConfirmToast(newVal ? 'Exam locked' : 'Exam unlocked');
+    });
+  }));
   document.querySelectorAll('[data-openexam]').forEach(el=>el.addEventListener('click',()=>goPush({adminTab:'exam', adminExamId:el.getAttribute('data-openexam')})));
   document.querySelectorAll('[data-delexam]').forEach(el=>el.addEventListener('click',()=>{
     if(!confirm('Delete this exam section and all its questions?')) return;
@@ -4163,6 +4198,10 @@ async function refreshMonthsFast(){
   try{ await TABLE_REFETCH.months(); if(isSafeToRepaint()) render(); }
   catch(err){ console.error('months refresh failed', err); }
 }
+async function refreshExamsFast(){
+  try{ await TABLE_REFETCH.exams(); if(isSafeToRepaint()) render(); }
+  catch(err){ console.error('exams refresh failed', err); }
+}
 async function refreshGuardsFast(){
   try{
     const {data,error} = await sb.from('guards_public').select('*');
@@ -4217,7 +4256,10 @@ function startLiveSync(){
   setInterval(()=>{
     syncAdminChannel(); // picks up login/logout without needing a page reload
     if(SESSION && SESSION.role==='admin') refreshGuardsFast();
-    else refreshMonthsFast();
+    else{
+      refreshMonthsFast();
+      if(S && S.screen==='guard-month') refreshExamsFast(); // so an exam lock/unlock shows up live on the exam list
+    }
   }, 2000);
   setInterval(refreshEverything, 30000); // safety net for everyone (new exams, edits, and a fallback if Realtime ever drops for the admin)
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refreshEverything(); });
