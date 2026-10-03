@@ -1151,6 +1151,7 @@ function fmtDateTime(ts){
   const d = new Date(ts);
   return { date: d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}), time: d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) };
 }
+function fmtRegAt(ts){ if(!ts) return '-'; const d=fmtDateTime(ts); return d.date+', '+d.time; }
 function letter(i){ return ['A','B','C','D'][i] || '-'; }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -4372,10 +4373,10 @@ function adminMasterDataDetail(view){
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px;"><button class="btn btn-primary btn-sm" id="mdExportBtn">⬇ Export to Excel</button></div>
     <div class="search-box"><input type="text" id="mdSearchInput" placeholder="Search by name, gate pass or mobile…" value="${esc(S.mdSearchQuery||'')}"></div>
     ${filteredRows.length===0?emptyState('search','No security person found','Check the spelling and try again.'):
-    `<div class="table-wrap"><table><thead><tr>${showRank?'<th>Rank</th>':'<th>S.No.</th>'}<th>Name</th><th>Gate pass</th><th>Mobile</th><th>Post</th>${showRank?'<th>Marks</th><th>Percentage</th>':''}${showMissed?'<th>Missed Exams</th>':''}${view==='registered'?'<th></th>':''}</tr></thead><tbody>
+    `<div class="table-wrap"><table><thead><tr>${showRank?'<th>Rank</th>':'<th>S.No.</th>'}<th>Name</th><th>Gate pass</th><th>Mobile</th><th>Post</th>${view==='registered'?'<th>Registered on</th>':''}${showRank?'<th>Marks</th><th>Percentage</th>':''}${showMissed?'<th>Missed Exams</th>':''}${view==='registered'?'<th></th>':''}</tr></thead><tbody>
     ${filteredRows.map((r,idx)=>{
       const g=r.g;
-      return `<tr><td class="mono">${showRank?r.rank:idx+1}</td><td><span class="name-link" data-profile="${esc(g.mobile)}">${esc(g.name)}</span></td><td class="mono">${esc(g.gatePass)}</td><td class="mono">${esc(g.mobile)}</td><td>${esc(g.post)}</td>${showRank?`<td class="mono">${r.achievedMarks}/${r.totalMarks}</td><td class="mono">${r.pct.toFixed(1)}%</td>`:''}${showMissed?`<td>${r.missed.length?esc(r.missed.join(', ')):'-'}</td>`:''}${view==='registered'?`<td><button class="icon-del-btn" data-delguard="${esc(g.mobile)}" title="Remove security person">${icon('trash',14)}</button></td>`:''}</tr>`;
+      return `<tr><td class="mono">${showRank?r.rank:idx+1}</td><td><span class="name-link" data-profile="${esc(g.mobile)}">${esc(g.name)}</span></td><td class="mono">${esc(g.gatePass)}</td><td class="mono">${esc(g.mobile)}</td><td>${esc(g.post)}</td>${view==='registered'?`<td class="mono">${fmtRegAt(g.registeredAt)}</td>`:''}${showRank?`<td class="mono">${r.achievedMarks}/${r.totalMarks}</td><td class="mono">${r.pct.toFixed(1)}%</td>`:''}${showMissed?`<td>${r.missed.length?esc(r.missed.join(', ')):'-'}</td>`:''}${view==='registered'?`<td><button class="icon-del-btn" data-delguard="${esc(g.mobile)}" title="Remove security person">${icon('trash',14)}</button></td>`:''}</tr>`;
     }).join('')}
     </tbody></table></div>`}
   </div>`;
@@ -4446,8 +4447,8 @@ function exportMasterDataExcel(view){
   let header, dataRows, title;
   if(view==='registered'){
     const ranking = guardRanking();
-    header = ['Rank','Name','Gate Pass Number','Mobile','Post','Achieved Marks','Total Marks','Percentage'];
-    dataRows = ranking.map((r,i)=>[i+1, r.g.name, r.g.gatePass, r.g.mobile, r.g.post, r.achievedMarks, r.totalMarks, r.pct.toFixed(1)+'%']);
+    header = ['Rank','Name','Gate Pass Number','Mobile','Post','Registered On','Achieved Marks','Total Marks','Percentage'];
+    dataRows = ranking.map((r,i)=>[i+1, r.g.name, r.g.gatePass, r.g.mobile, r.g.post, fmtRegAt(r.g.registeredAt), r.achievedMarks, r.totalMarks, r.pct.toFixed(1)+'%']);
     title = 'Registered security person';
   } else {
     const { attend, notAttend } = masterDataAttendance();
@@ -4496,7 +4497,7 @@ function adminGuardProfile(){
   const attsChrono = atts.slice().sort((a,b)=>a.submittedAt-b.submittedAt);
   return `
   <div class="card" style="margin-bottom:16px;">
-    <div class="panel-head"><div><h2>${esc(g.name)}</h2><p class="mono">${esc(g.gatePass)} · ${esc(g.post)} · ${esc(g.mobile)}</p></div>
+    <div class="panel-head"><div><h2>${esc(g.name)}</h2><p class="mono">${esc(g.gatePass)} · ${esc(g.post)} · ${esc(g.mobile)}</p><p style="margin-top:4px;">Registered on: <span class="mono">${fmtRegAt(g.registeredAt)}</span></p></div>
       <button class="btn btn-ghost btn-sm" id="resetPinBtn" type="button">${icon('eye',14)} Reset PIN</button>
     </div>
     ${S.showResetPin?`
