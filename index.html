@@ -2397,17 +2397,93 @@ function bindExamLang(){
   });
 }
 
+/* ============ AUTO TRANSLATION (Hindi -> English) ============
+   Admins create exams in Hindi only. For those exams the guard gets an EN / हिं
+   toggle; choosing EN translates the question + option text through the internet
+   (Google Translate, with MyMemory as a backup). Results are cached on the device
+   so each text is translated only once. */
+const TR_KEY = 'vses_tr_hi_en_v1';
+let TR_CACHE = {};
+try{ TR_CACHE = JSON.parse(localStorage.getItem(TR_KEY)||'{}') || {}; }catch(e){ TR_CACHE = {}; }
+function trSave(){ try{ localStorage.setItem(TR_KEY, JSON.stringify(TR_CACHE)); }catch(e){} }
+function trHasDeva(t){ return /[\u0900-\u097F]/.test(t||''); }
+function trClean(t){
+  // "Pull (Pull)" -> "Pull" : the Hindi text often repeats the English word in brackets
+  return String(t).replace(/\b([A-Za-z][A-Za-z.\-' ]*?)\s*\(\s*\1\s*\)/gi,'$1').replace(/\s+/g,' ').trim();
+}
+function trText(t){
+  if(!t || !trHasDeva(t)) return t || '';
+  return TR_CACHE[t] || t;
+}
+async function trFetchOne(text){
+  try{
+    const r = await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=hi&tl=en&dt=t&q='+encodeURIComponent(text));
+    if(!r.ok) throw new Error('http '+r.status);
+    const j = await r.json();
+    const out = (j[0]||[]).map(x=>x[0]).join('');
+    if(out) return trClean(out);
+  }catch(e){}
+  const r2 = await fetch('https://api.mymemory.translated.net/get?q='+encodeURIComponent(text)+'&langpair=hi|en');
+  const j2 = await r2.json();
+  const o = j2 && j2.responseData && j2.responseData.translatedText;
+  if(!o) throw new Error('translation failed');
+  return trClean(o);
+}
+function trStringsForExam(ex){
+  const set = new Set();
+  questionsForExam(ex.id).forEach(q=>{
+    if(q.textHi) set.add(q.textHi);
+    if(q.optType!=='image') (q.options||[]).forEach(o=>{ if(o.hi) set.add(o.hi); });
+  });
+  return [...set].filter(t=>trHasDeva(t));
+}
+function trMissing(ex){ return trStringsForExam(ex).filter(t=>!TR_CACHE[t]); }
+async function trEnsureForExam(ex){
+  const todo = trMissing(ex);
+  let i = 0, failed = false;
+  const worker = async ()=>{
+    while(i < todo.length){
+      const t = todo[i++];
+      try{ TR_CACHE[t] = await trFetchOne(t); }catch(e){ failed = true; }
+    }
+  };
+  await Promise.all(Array.from({length:Math.min(6,todo.length)}, worker));
+  trSave();
+  if(failed || trMissing(ex).length) throw new Error('translation incomplete');
+}
+// text to show for a language; Hindi-only exams are translated when English is chosen
+function qShow(ex, lang, hiVal, enVal){
+  if(ex && ex.qLang==='hi' && lang==='en') return trText(hiVal);
+  return lang==='hi' ? hiVal : enVal;
+}
+async function switchLangWithTranslate(ex, target, btn, apply){
+  if(target==='en' && ex && ex.qLang==='hi' && trMissing(ex).length){
+    const all = document.querySelectorAll('[data-switch-lang],[data-rlang]');
+    all.forEach(b=>b.disabled=true);
+    const orig = btn.textContent; btn.textContent = 'Translating…';
+    try{ await trEnsureForExam(ex); }
+    catch(err){
+      console.error(err);
+      all.forEach(b=>b.disabled=false); btn.textContent = orig;
+      alert('English translation needs an internet connection. Please check your connection and try again.');
+      return;
+    }
+  }
+  apply();
+}
+
 /* ============ EXAM RUNNER ============ */
 function screenExamRun(){
   const ex = examById(S.examId);
   const qs = publishedQuestionsForExam(ex.id);
   const lang = S.lang;
   const answered = S.answers.filter(a=>a!==null).length;
-  const showToggle = !ex.qLang || ex.qLang==='both';
+  const showToggle = !ex.qLang || ex.qLang==='both' || ex.qLang==='hi';
+  const autoTr = ex.qLang==='hi' && lang==='en';
   return `
   <div class="exam-read">
   <div class="exam-meta">
-    <div><h2 style="margin:0;">${examHeadlineHtml(ex)}${examTypeChip(ex)}</h2><p style="margin:2px 0 0;color:var(--muted);font-size:13px;">${answered} / ${qs.length} answered</p></div>
+    <div><h2 style="margin:0;">${examHeadlineHtml(ex)}${examTypeChip(ex)}</h2><p style="margin:2px 0 0;color:var(--muted);font-size:13px;">${answered} / ${qs.length} answered${autoTr?' · Auto-translated from Hindi — if unclear, switch to हिं':''}</p></div>
     ${showToggle?`<div class="lang-toggle">
       <button class="${lang==='en'?'active':''}" data-switch-lang="en">EN</button>
       <button class="${lang==='hi'?'active':''}" data-switch-lang="hi">हिं</button>
@@ -2417,12 +2493,12 @@ function screenExamRun(){
   ${qs.map((q,i)=>{
     const isImg = q.optType==='image';
     return `<div class="qcard ${S.answers[i]!==null?'answered':''}">
-      <div class="qtext"><span class="qnum">${i+1}</span><span lang-hi>${esc(lang==='hi'?q.textHi:q.textEn)}</span></div>
+      <div class="qtext"><span class="qnum">${i+1}</span><span lang-hi>${esc(qShow(ex,lang,q.textHi,q.textEn))}</span></div>
       <div class="opt-list ${isImg?'opt-images':''}">
         ${q.options.map((opt,oi)=>`
           <div class="opt ${S.answers[i]===oi?'selected':''}" data-qi="${i}" data-oi="${oi}">
             <span class="letter">${letter(oi)}</span>
-            ${isImg ? `<img src="${opt.img}" alt="option ${letter(oi)}">` : `<span lang-hi>${esc(lang==='hi'?opt.hi:opt.en)}</span>`}
+            ${isImg ? `<img src="${opt.img}" alt="option ${letter(oi)}">` : `<span lang-hi>${esc(qShow(ex,lang,opt.hi,opt.en))}</span>`}
           </div>`).join('')}
       </div>
     </div>`;
@@ -2434,7 +2510,12 @@ function screenExamRun(){
   `;
 }
 function bindExamRun(){
-  document.querySelectorAll('[data-switch-lang]').forEach(el=>el.addEventListener('click',()=>patch({lang:el.getAttribute('data-switch-lang')})));
+  document.querySelectorAll('[data-switch-lang]').forEach(el=>el.addEventListener('click',()=>{
+    const target = el.getAttribute('data-switch-lang');
+    if(target===S.lang) return;
+    const ex = examById(S.examId), exId = S.examId;
+    switchLangWithTranslate(ex, target, el, ()=>{ if(S.screen==='guard-exam-run' && S.examId===exId) patch({lang:target}); });
+  }));
   document.querySelectorAll('.opt[data-qi]').forEach(el=>{
     el.addEventListener('click',()=>{
       const qi = parseInt(el.getAttribute('data-qi'),10), oi = parseInt(el.getAttribute('data-oi'),10);
@@ -2533,9 +2614,9 @@ function screenReview(mode){
   const g = findGuard(att.guardMobile);
   const dt = fmtDateTime(att.submittedAt);
   const lang = S.reviewLang || att.lang || 'en';
-  const showToggle = !ex.qLang || ex.qLang==='both';
+  const showToggle = !ex.qLang || ex.qLang==='both' || ex.qLang==='hi';
   const headline = mode==='admin'
-    ? `${esc(ex.nameEn)} <span style="color:var(--muted);font-weight:500;">/ ${esc(ex.nameHi)}</span>`
+    ? `${esc(ex.nameEn)}${(ex.nameHi && ex.nameHi.trim() && ex.nameHi.trim()!==(ex.nameEn||'').trim())?` <span style="color:var(--muted);font-weight:500;">/ ${esc(ex.nameHi)}</span>`:''}`
     : examHeadlineHtml(ex);
   return `
   <div class="exam-read">
@@ -2553,7 +2634,7 @@ function screenReview(mode){
     const isImg = q.optType==='image';
     const sel = att.answers[i];
     return `<div class="qcard">
-      <div class="qtext"><span class="qnum">${i+1}</span><span lang-hi>${esc(lang==='hi'?q.textHi:q.textEn)}</span></div>
+      <div class="qtext"><span class="qnum">${i+1}</span><span lang-hi>${esc(qShow(ex,lang,q.textHi,q.textEn))}</span></div>
       <div class="opt-list ${isImg?'opt-images':''}">
         ${q.options.map((opt,oi)=>{
           let cls='';
@@ -2566,7 +2647,7 @@ function screenReview(mode){
           }
           return `<div class="opt ${cls}">
             <span class="letter">${letter(oi)}</span>
-            ${isImg?`<img src="${opt.img}" alt="">`:`<span lang-hi>${esc(lang==='hi'?opt.hi:opt.en)}</span>`}
+            ${isImg?`<img src="${opt.img}" alt="">`:`<span lang-hi>${esc(qShow(ex,lang,opt.hi,opt.en))}</span>`}
             ${oi===sel?'<span style="margin-left:auto;font-size:11px;color:var(--muted);">your answer</span>':''}
           </div>`;
         }).join('')}
@@ -2577,7 +2658,18 @@ function screenReview(mode){
   `;
 }
 function bindReview(){
-  document.querySelectorAll('[data-rlang]').forEach(el=>el.addEventListener('click',()=>patch({reviewLang:el.getAttribute('data-rlang')})));
+  const att = DB.attempts.find(a=>a.id===S.attemptId);
+  const ex = att && examById(att.examId);
+  document.querySelectorAll('[data-rlang]').forEach(el=>el.addEventListener('click',()=>{
+    const target = el.getAttribute('data-rlang');
+    const attId = S.attemptId;
+    switchLangWithTranslate(ex, target, el, ()=>{ if(S.attemptId===attId) patch({reviewLang:target}); });
+  }));
+  // attempt was taken in English on another device: fetch the translation so the review matches
+  if(ex && ex.qLang==='hi' && (S.reviewLang || att.lang)==='en' && trMissing(ex).length){
+    const attId = S.attemptId;
+    trEnsureForExam(ex).then(()=>{ if(S.attemptId===attId) render(); }).catch(()=>{});
+  }
 }
 
 /* ============ ADMIN AUTH ============ */
@@ -3694,21 +3786,9 @@ function adminMonthDetail(monthId){
   <div class="card">
     <div class="panel-head"><div><h2>${esc(m.label)}</h2><p>Exam sections for this month.</p></div></div>
     <form id="addExamForm" style="margin-bottom:18px;">
-      <div class="field-row">
-        <div class="field">
-          <label>Exam name (English)</label>
-          <input type="text" name="nameEn" id="nameEnInput" placeholder="e.g. Fire Safety Exam">
-          <label style="display:flex;align-items:center;gap:6px;margin-top:7px;font-weight:500;color:var(--muted);cursor:pointer;">
-            <input type="checkbox" name="showNameEn" id="showNameEnChk" style="width:14px;height:14px;"> Security person site pr headline English me dikhayein
-          </label>
-        </div>
-        <div class="field">
-          <label>Exam name (Hindi)</label>
-          <input type="text" name="nameHi" id="nameHiInput" placeholder="e.g. अग्नि सुरक्षा परीक्षा" required>
-          <label style="display:flex;align-items:center;gap:6px;margin-top:7px;font-weight:500;color:var(--muted);cursor:pointer;">
-            <input type="checkbox" name="showNameHi" id="showNameHiChk" checked style="width:14px;height:14px;"> Security person site pr headline Hindi me dikhayein
-          </label>
-        </div>
+      <div class="field" style="max-width:520px;">
+        <label>Exam name</label>
+        <input type="text" name="nameEn" id="nameEnInput" placeholder="Type exam name" required>
       </div>
       <div class="field" style="max-width:260px;">
         <label>Exam type</label>
@@ -3722,9 +3802,9 @@ function adminMonthDetail(monthId){
       const dropped = ex.createdAt ? ` · Dropped on ${fmtDateTime(ex.createdAt).date} at ${fmtDateTime(ex.createdAt).time}` : '';
       const typeChip = ex.examType ? `<span class="chip" style="margin-left:8px;">${esc(ex.examType)}</span>` : '';
       const f2 = examShowFlags(ex);
-      const langChip = `<span class="chip" style="margin-left:8px;" title="Security person site pr headline">${f2.en&&f2.hi?'EN+HI':f2.en?'EN only':'HI only'}</span>`;
+      const langChip = '';
       const exLocked = !!ex.locked;
-      return `<div class="item-row"><div class="info"><b>${esc(ex.nameEn)} / ${esc(ex.nameHi)}${typeChip}${langChip}</b><span>${qc} question${qc===1?'':'s'}${dropped}</span></div>
+      return `<div class="item-row"><div class="info"><b>${esc(ex.nameEn)}${(ex.nameHi && ex.nameHi.trim() && ex.nameHi.trim()!==(ex.nameEn||'').trim())?' / '+esc(ex.nameHi):''}${typeChip}${langChip}</b><span>${qc} question${qc===1?'':'s'}${dropped}</span></div>
       <div class="actions">
       <button class="lock-toggle ${exLocked?'is-locked':'is-unlocked'}" data-lockexam="${ex.id}" title="${exLocked?'Locked — click to unlock for security persons':'Unlocked — click to lock for security persons'}">${icon(exLocked?'lock':'unlock',15)}</button>
       <button class="btn btn-sm" data-openexam="${ex.id}">Manage questions →</button>
@@ -3734,26 +3814,12 @@ function adminMonthDetail(monthId){
 }
 function bindAdminMonthDetail(){
   const f = document.getElementById('addExamForm');
-  const nameEnInput = document.getElementById('nameEnInput');
-  const nameHiInput = document.getElementById('nameHiInput');
-  const showNameEnChk = document.getElementById('showNameEnChk');
-  const showNameHiChk = document.getElementById('showNameHiChk');
-  function syncNameRequired(){
-    if(nameEnInput) nameEnInput.required = !!(showNameEnChk && showNameEnChk.checked);
-    if(nameHiInput) nameHiInput.required = !!(showNameHiChk && showNameHiChk.checked);
-  }
-  syncNameRequired();
-  if(showNameEnChk) showNameEnChk.addEventListener('change', syncNameRequired);
-  if(showNameHiChk) showNameHiChk.addEventListener('change', syncNameRequired);
   if(f) f.addEventListener('submit', e=>{
     e.preventDefault();
     const fd = new FormData(f);
-    const showNameEn = fd.get('showNameEn')==='on';
-    const showNameHi = fd.get('showNameHi')==='on';
-    if(!showNameEn && !showNameHi){ alert('Select at least one headline checkbox (English or Hindi).'); return; }
-    if(showNameEn && !fd.get('nameEn').trim()){ alert('Exam name (English) is required because its checkbox is ticked.'); return; }
-    if(showNameHi && !fd.get('nameHi').trim()){ alert('Exam name (Hindi) is required because its checkbox is ticked.'); return; }
-    const exam = {id:uid('ex'), monthId:S.adminMonthId, nameEn:fd.get('nameEn').trim(), nameHi:fd.get('nameHi').trim(), examType:fd.get('examType'), qLang:'hi', showNameEn, showNameHi, createdAt:Date.now()};
+    const name = (fd.get('nameEn')||'').trim();
+    if(!name){ alert('Exam name is required.'); return; }
+    const exam = {id:uid('ex'), monthId:S.adminMonthId, nameEn:name, nameHi:name, examType:fd.get('examType'), qLang:'hi', showNameEn:true, showNameHi:false, createdAt:Date.now()};
     withBusy(f, async ()=>{
       const {ok,error} = await dbWrite(sb.from('exams').insert(toSnake(exam)));
       if(!ok) throw error;
@@ -3809,13 +3875,6 @@ function adminExamQuestions(){
   const qLang = ex.qLang;
   const qLangHint = qLang==='hi'?'Fill in every question in Hindi only.':qLang==='en'?'Fill in every question in English only.':'Fill in both Hindi and English text for every question.';
   return `
-  <div class="crumb-row">
-    <div class="qlang-select" title="Question language">
-      <button type="button" class="${qLang==='hi'?'active':''}" data-qlang="hi">हिन्दी</button>
-      <button type="button" class="${qLang==='en'?'active':''}" data-qlang="en">English</button>
-      <button type="button" class="${qLang==='both'?'active':''}" data-qlang="both">Both</button>
-    </div>
-  </div>
   <div class="card" style="margin-bottom:16px;">
     <div class="panel-head">
       <div><h2>${QB_STATE.editId?'Edit MCQ question':'Add MCQ question'}</h2><p>${qLangHint} Select the correct option using the radio button.</p></div>
@@ -3828,8 +3887,8 @@ function adminExamQuestions(){
         <div class="field"><label>Question (English)</label><textarea name="textEn" rows="2" required>${esc(QB_STATE.textEn)}</textarea></div>
         <div class="field"><label>Question (Hindi)</label><textarea name="textHi" rows="2" required>${esc(QB_STATE.textHi)}</textarea></div>
       </div>` : qLang==='hi' ? `
-      <div class="field"><label>Question (Hindi)</label><textarea name="textHi" rows="2" required>${esc(QB_STATE.textHi)}</textarea></div>` : `
-      <div class="field"><label>Question (English)</label><textarea name="textEn" rows="2" required>${esc(QB_STATE.textEn)}</textarea></div>`}
+      <div class="field"><label>Question</label><textarea name="textHi" rows="2" required>${esc(QB_STATE.textHi)}</textarea></div>` : `
+      <div class="field"><label>Question</label><textarea name="textEn" rows="2" required>${esc(QB_STATE.textEn)}</textarea></div>`}
       <div class="field">
         <label>Option type</label>
         <div class="tabs" style="max-width:280px;margin:0;">
@@ -4237,7 +4296,8 @@ function adminMasterData(){
   if(S.mdMonthNum==null && defMonthNum!=null){ S.mdMonthNum = defMonthNum; }
   if(S.mdYear==null && defYear!=null){ S.mdYear = defYear; }
   const { selMonthRec, examsInMonth } = masterDataExamsToCheck();
-  const examTypesPresent = [...new Set(examsInMonth.map(e=>e.examType).filter(Boolean))];
+  const examTypesPresent = [...new Set(examsInMonth.map(e=>e.examType).filter(Boolean))]
+  examTypesPresent.sort((a,b)=>{const ia=EXAM_TYPES.indexOf(a), ib=EXAM_TYPES.indexOf(b); return (ia<0?999:ia)-(ib<0?999:ib);});
   const selExamType = S.mdExamType || '';
   const totalGuards = DB.guards.length;
   const { attend, notAttend } = masterDataAttendance();
