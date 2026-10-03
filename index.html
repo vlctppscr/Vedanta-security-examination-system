@@ -55,6 +55,47 @@ html[data-theme="light"]{
   --blue:#3B6FE0;
   --glass:rgba(255,255,255,.75);
 }
+/* Black theme — near-black panels, same accent colors as dark. */
+html[data-theme="black"]{
+  --bg:#000000;
+  --bg-2:#060606;
+  --panel:#0E0E0E;
+  --panel-2:#181818;
+  --line:#262626;
+  --line-2:#333333;
+  --text:#F2F2F2;
+  --muted:#9A9A9A;
+  --muted-2:#6E6E6E;
+  --amber:#F0A93B;
+  --amber-soft:rgba(240,169,59,.14);
+  --green:#3FBF7F;
+  --green-soft:rgba(63,191,127,.14);
+  --red:#E5636B;
+  --red-soft:rgba(229,99,107,.14);
+  --blue:#5B8DEF;
+  --glass:rgba(8,8,8,.78);
+}
+/* Blue theme — deep navy/black panels with a cobalt-blue accent in
+   place of amber, in the spirit of the Control Room CCTV dashboard look. */
+html[data-theme="blue"]{
+  --bg:#060B18;
+  --bg-2:#081024;
+  --panel:#0D1B33;
+  --panel-2:#122445;
+  --line:#1B3156;
+  --line-2:#234070;
+  --text:#EAF2FF;
+  --muted:#8FA6CC;
+  --muted-2:#60799E;
+  --amber:#2E7BF6;
+  --amber-soft:rgba(46,123,246,.16);
+  --green:#2FD6C0;
+  --green-soft:rgba(47,214,192,.14);
+  --red:#F2566A;
+  --red-soft:rgba(242,86,106,.14);
+  --blue:#2E7BF6;
+  --glass:rgba(13,27,51,.78);
+}
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
 body{
@@ -269,6 +310,17 @@ tbody tr:hover{background:var(--panel-2);}
 }
 .admin-sidebar.open{transform:translateX(0);}
 .admin-nav{display:flex;flex-direction:column;gap:2px;padding:14px 10px;overflow-y:auto;}
+/* Scrollbars everywhere pick up the current theme's colors instead of
+   staying the browser's plain white default. */
+*{scrollbar-width:thin;scrollbar-color:var(--line-2) transparent;}
+*::-webkit-scrollbar{width:9px;height:9px;}
+*::-webkit-scrollbar-track{background:transparent;}
+*::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:20px;}
+*::-webkit-scrollbar-thumb:hover{background:var(--muted-2);}
+/* ...except the sidebar's own scroll track on the Dashboard tab, which
+   stays hidden there (other tabs keep the themed scrollbar above). */
+.admin-sidebar[data-tab="dashboard"] .admin-nav{scrollbar-width:none;-ms-overflow-style:none;}
+.admin-sidebar[data-tab="dashboard"] .admin-nav::-webkit-scrollbar{display:none;}
 .admin-nav button{
   display:flex;align-items:center;gap:11px;width:100%;text-align:left;background:transparent;border:none;color:var(--muted);
   padding:11px 12px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;
@@ -419,7 +471,11 @@ select.select-inline{width:auto;display:inline-block;}
 .d-live i{width:7px;height:7px;border-radius:50%;background:var(--green);animation:dPulse 1.6s ease-out infinite;}
 .d-filter{display:flex;align-items:center;gap:8px;}
 .d-filter label{font-size:12px;color:var(--muted);font-weight:600;}
-.d-filter select{min-width:160px;}
+.d-filter select{
+  min-width:160px;background:var(--bg-2);border:1px solid var(--line-2);color:var(--text);
+  padding:9px 11px;border-radius:var(--radius-sm);font-size:13.5px;font-family:inherit;
+}
+.d-filter select:focus{outline:2px solid var(--amber);outline-offset:0;border-color:var(--amber);}
 .d-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px;}
 .d-kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;position:relative;overflow:hidden;transition:.2s transform,.2s border-color,.2s box-shadow;}
 .d-kpi::after{content:"";position:absolute;right:-26px;top:-26px;width:90px;height:90px;border-radius:50%;background:var(--c);opacity:.08;}
@@ -767,6 +823,8 @@ body{
 /* ================= BRANDING: logo, background posters, header clock ================= */
 :root{ --scrim-rgb:10,15,28; }
 html[data-theme="light"]{ --scrim-rgb:243,245,250; }
+html[data-theme="black"]{ --scrim-rgb:0,0,0; }
+html[data-theme="blue"]{ --scrim-rgb:6,11,24; }
 #app{ position:relative; z-index:1; }
 #pageBg{ position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; display:none; }
 html.has-page-bg #pageBg{ display:block; }
@@ -788,6 +846,8 @@ html.has-page-bg #pageBg{ display:block; }
 /* header / footer bar background lives in its own layer so its transparency can be adjusted from Site Settings */
 :root{ --panel-rgb:18,26,46; }
 html[data-theme="light"]{ --panel-rgb:255,255,255; }
+html[data-theme="black"]{ --panel-rgb:14,14,14; }
+html[data-theme="blue"]{ --panel-rgb:13,27,51; }
 .topbar{ background:transparent; backdrop-filter:var(--hdr-bf, blur(14px) saturate(140%)); -webkit-backdrop-filter:var(--hdr-bf, blur(14px) saturate(140%)); }
 .site-footer{ background:transparent; }
 .bar-bg{ position:absolute; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
@@ -1567,7 +1627,7 @@ async function loadSiteSettings(){
   applyBranding();
 }
 function applyTheme(){
-  document.documentElement.setAttribute('data-theme', SITE_SETTINGS.theme==='light' ? 'light' : 'dark');
+  document.documentElement.setAttribute('data-theme', ['light','black','blue'].includes(SITE_SETTINGS.theme) ? SITE_SETTINGS.theme : 'dark');
 }
 (function preApplyCachedTheme(){ // avoid a dark/light flash before the app boots
   try{
@@ -2218,7 +2278,7 @@ function screenGuardDashboard(){
   const seen = (g && g.seenExams) || [];
   return `
   <div class="panel-head"><div><h2>Select month</h2><p>Choose a month to see its exam sections.</p></div>
-    <button class="btn btn-ghost btn-sm" data-act="myexams">${icon('doc',15)} My previous exams</button>
+    <button class="btn btn-sm" data-act="myexams">${icon('doc',15)} My previous exams</button>
   </div>
   ${months.length===0 ? emptyState('empty','No month has been set yet','The admin will add this month\'s exams soon. Please check back later.') :
   `<div class="grid">${months.map(m=>{
@@ -2574,7 +2634,7 @@ function adminSidebarHtml(){
     ['settings',icon('gear',15),'Site Settings'],
   ];
   return `
-  <div class="admin-sidebar${navOpen?' open':''}">
+  <div class="admin-sidebar${navOpen?' open':''}" data-tab="${tab}">
     <div class="admin-nav">
       ${nav.map(([id,ic,label])=>`<button class="${tab===id?'active':''}" data-navto="${id}" title="${label.replace(/&amp;/g,'&')}">${ic}<span class="label">${label}</span></button>`).join('')}
     </div>
@@ -2887,9 +2947,11 @@ function adminSiteSettings(){
   <div class="card">
     <div class="panel-head"><div><h2>Appearance</h2><p>These apply instantly, site-wide, for every visitor.</p></div></div>
     <div class="field"><label>Theme</label>
-      <div class="lang-toggle" id="themeToggle" style="width:fit-content;">
-        <button type="button" class="${s.theme!=='light'?'active':''}" data-theme-choice="dark">🌙 Dark</button>
+      <div class="lang-toggle" id="themeToggle" style="width:fit-content;flex-wrap:wrap;">
+        <button type="button" class="${(!s.theme||s.theme==='dark')?'active':''}" data-theme-choice="dark">🌙 Dark</button>
         <button type="button" class="${s.theme==='light'?'active':''}" data-theme-choice="light">☀️ Light</button>
+        <button type="button" class="${s.theme==='black'?'active':''}" data-theme-choice="black">⚫ Black</button>
+        <button type="button" class="${s.theme==='blue'?'active':''}" data-theme-choice="blue">🔵 Blue</button>
       </div>
     </div>
     <div class="field">
