@@ -274,7 +274,7 @@ main{flex:1;padding:32px 0 60px;}
 .score-ring .den{font-size:12px;color:var(--muted);}
 
 /* ---- table ---- */
-.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);}
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);}
 table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:640px;}
 thead th{text-align:left;padding:11px 14px;background:var(--panel-2);color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--line);white-space:nowrap;}
 tbody td{padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap;}
@@ -862,7 +862,7 @@ html.has-page-bg .hero{ --muted:var(--text); text-shadow:0 1px 8px rgba(var(--sc
 .site-footer .footer-inner, .site-footer .footer-bottom{ position:relative; z-index:1; }
 /* with a full-screen image behind the page, let the boxes turn into soft glass so the poster shows around/through them */
 html.has-page-bg .card, html.has-page-bg .tile, html.has-page-bg .role-card,
-html.has-page-bg .stat-box, html.has-page-bg .admin-nav{
+html.has-page-bg .stat-box, html.has-page-bg .admin-nav, html.has-page-bg .table-wrap{
   background:var(--glass); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
 }
 html.has-page-bg .hero::before, html.has-page-bg .hero::after{ display:none; }
@@ -946,7 +946,7 @@ html.no-ftr-border .footer-bottom{ border-top-color:transparent; }
 
 /* ---- admin-adjustable transparency for every box ---- */
 html.has-box-alpha .card, html.has-box-alpha .tile, html.has-box-alpha .role-card, html.has-box-alpha .stat-box,
-html.has-box-alpha .admin-nav, html.has-box-alpha .qcard, html.has-box-alpha .admin-sidebar{
+html.has-box-alpha .admin-nav, html.has-box-alpha .qcard, html.has-box-alpha .admin-sidebar, html.has-box-alpha .table-wrap{
   background:rgba(var(--panel-rgb), var(--box-alpha,1)); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
 }
 html.has-box-alpha .hero.hero-boxbg .role-card{ background:var(--hero-box-bg); }
@@ -1019,7 +1019,7 @@ html.has-box-alpha .hero.hero-boxbg .role-card{ background:var(--hero-box-bg); }
 
 const POSTS = ["SO","SS","SG","CO"];
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const EXAM_TYPES = ["Pre SOP","Post SOP","Pre Psara","Post Psara","Human rights","Other"];
+const EXAM_TYPES = ["Pre SOP","Post SOP","Pre Psara","Post Psara","Human rights","OJT","Other"];
 
 /* =========================================================
    Supabase-backed storage.
@@ -1874,6 +1874,9 @@ function render(){
   const animKey = [S.screen,S.adminTab,S.adminMonthId,S.adminExamId,S.profileMobile,S.attemptId].join('|');
   const isNewScreen = animKey !== LAST_RENDER_KEY;
   LAST_RENDER_KEY = animKey;
+  // Background auto-refresh re-renders the page; remember each table's horizontal
+  // scroll so the person's own left/right scroll isn't reset to the first column.
+  const _tblScroll = isNewScreen ? [] : Array.from(app.querySelectorAll('.table-wrap')).map(el=>el.scrollLeft);
   app.innerHTML = topbarHtml() + adminSidebarHtml() + '<main><div class="wrap'+(isNewScreen?' page-enter':'')+'" id="mainwrap"></div></main>' + (SITE_SETTINGS.footerEnabled!==false ? footerHtml() : '');
   document.body.classList.toggle('admin-sidebar-open', !!(SESSION && SESSION.role==='admin' && S.screen==='admin-dashboard' && S.adminNavOpen));
   const mount = document.getElementById('mainwrap');
@@ -1883,6 +1886,9 @@ function render(){
   ensureVideosPlay();
   bindGlobal();
   bindScreen();
+  if(_tblScroll.length){
+    app.querySelectorAll('.table-wrap').forEach((el,i)=>{ if(_tblScroll[i]) el.scrollLeft = _tblScroll[i]; });
+  }
   document.body.classList.toggle('secure-mode', SECURE_SCREENS.includes(S.screen));
 }
 
@@ -2189,8 +2195,8 @@ function screenGuardAuth(){
           <div class="field"><label>Mobile number (company registered)</label><input type="tel" name="mobile" maxlength="10" inputmode="numeric" placeholder="10-digit mobile number" required></div>
           <div class="field"><label>Gate pass number</label><input type="text" name="gatePass" placeholder="e.g. GP-1042" required></div>
         </div>
-        <div class="field"><label>Post</label>
-          <select name="post" required><option value="">Select post</option>${POSTS.map(p=>`<option value="${p}">${p}</option>`).join('')}</select>
+        <div class="field"><label>Designation</label>
+          <select name="post" required><option value="">Select Designation</option>${POSTS.map(p=>`<option value="${p}">${p}</option>`).join('')}</select>
         </div>
         <div class="field-row">
           <div class="field"><label>Set a 4-digit PIN</label><div class="pw-wrap"><input type="password" name="pin" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" placeholder="••••" required><button type="button" class="pw-eye" data-pwtoggle>${icon('eye',17)}</button></div></div>
