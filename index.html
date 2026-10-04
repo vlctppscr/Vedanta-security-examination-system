@@ -1060,6 +1060,24 @@ function guardObjToRow(o){ return toSnake(o); }
 function adminRowToObj(row){ const o = toCamel(row); o.password = o.passwordHash; delete o.passwordHash; return o; }
 function adminObjToRow(o){ const c = Object.assign({}, o); c.passwordHash = c.password; delete c.password; return toSnake(c); }
 
+/* ---- answer keys live in a separate server table (question_keys). Only a
+   logged-in admin (token) can read them; guards never receive them. ---- */
+const REVIEW_FLAGS = {}; // attemptId -> [true/false per question], from the server
+async function mergeAdminKeys(){
+  if(!SESSION || SESSION.role!=='admin') return;
+  if(!SESSION.token){ clearSession(); location.reload(); return; } // old session without token: log in again
+  const { data, error } = await sb.rpc('admin_get_keys', {p_token: SESSION.token});
+  if(error){
+    if(String(error.message||'').includes('ADMIN_AUTH_FAILED')){ clearSession(); alert('Admin session expired. Please log in again.'); location.reload(); return; }
+    throw error;
+  }
+  const map = {}; (data||[]).forEach(r=>{ map[r.question_id] = r.correct; });
+  DB.questions.forEach(q=>{ if(map[q.id]!==undefined) q.correct = map[q.id]; });
+}
+async function adminSetKey(questionId, correct){
+  const { error } = await sb.rpc('admin_set_question_key', {p_token: SESSION.token, p_question_id: questionId, p_correct: correct});
+  if(error) throw error;
+}
 async function loadAllData(){
   /* admins table is intentionally NOT fetched here — its select/insert
      policies were revoked so nobody's admin credentials ever reach a
@@ -1078,6 +1096,7 @@ async function loadAllData(){
   DB.exams = (e.data||[]).map(toCamel);
   DB.questions = (q.data||[]).map(toCamel);
   DB.attempts = (at.data||[]).map(toCamel);
+  await mergeAdminKeys();
 }
 async function withBusy(form, fn){
   const btn = form.querySelector('button[type="submit"]');
@@ -2528,16 +2547,16 @@ function bindExamRun(){
   if(sub) sub.addEventListener('click',()=>{
     if(sub.disabled) return;
     sub.disabled = true;
-    const qs = publishedQuestionsForExam(S.examId);
-    let score = 0;
-    qs.forEach((q,i)=>{ if(S.answers[i]===q.correct) score++; });
-    const attempt = {
-      id: uid('att'), guardMobile: SESSION.mobile, examId: S.examId, lang: S.lang,
-      answers: S.answers.slice(), score, total: qs.length, submittedAt: Date.now(), approvedRetake:false
-    };
+    const attId = uid('att');
     sub.textContent = 'Submitting…';
-    dbWrite(sb.from('attempts').insert(toSnake(attempt))).then(({ok,error})=>{
-      if(!ok){ console.error(error); alert('Exam could not be submitted. Please check your internet connection and try again.\n\n'+(error&&error.message?error.message:'')); sub.disabled=false; sub.textContent='Submit exam'; return; }
+    sb.rpc('submit_exam', {p_id: attId, p_mobile: SESSION.mobile, p_exam_id: S.examId, p_lang: S.lang, p_answers: S.answers.slice()}).then(({data,error})=>{
+      if(error || !data){
+        console.error(error);
+        const msg = (error&&error.message)||'';
+        alert(msg.includes('ALREADY_ATTEMPTED') ? 'You have already submitted this exam.' : 'Exam could not be submitted. Please check your internet connection and try again.\n\n'+msg);
+        sub.disabled=false; sub.textContent='Submit exam'; return;
+      }
+      const attempt = toCamel(data);
       DB.attempts.push(attempt);
       S.submitted = true; // mark this exam-run screen as already-submitted, so a later
                            // back-button press that returns to it doesn't wrongly warn
@@ -2644,7 +2663,11 @@ function screenReview(mode){
             else if(oi===sel && sel!==q.correct) cls='wrong';
           } else {
             /* Security person: only their own selected option should show green/red. If the wrong option is selected, the correct answer should not be shown. */
-            if(oi===sel) cls = (sel===q.correct) ? 'correct' : 'wrong';
+            if(oi===sel){
+              const fl = REVIEW_FLAGS[att.id];
+              const ok = fl ? !!fl[i] : (q.correct!==undefined ? sel===q.correct : null);
+              if(ok!==null) cls = ok ? 'correct' : 'wrong';
+            }
           }
           return `<div class="opt ${cls}">
             <span class="letter">${letter(oi)}</span>
@@ -2660,6 +2683,13 @@ function screenReview(mode){
 }
 function bindReview(){
   const att = DB.attempts.find(a=>a.id===S.attemptId);
+  if(att && SESSION && SESSION.role==='guard' && !REVIEW_FLAGS[att.id]){
+    const attId = att.id;
+    sb.rpc('get_attempt_review', {p_mobile: SESSION.mobile, p_attempt_id: attId}).then(({data,error})=>{
+      if(error){ console.error(error); return; }
+      if(Array.isArray(data)){ REVIEW_FLAGS[attId] = data; if(S.attemptId===attId) render(); }
+    });
+  }
   const ex = att && examById(att.examId);
   document.querySelectorAll('[data-rlang]').forEach(el=>el.addEventListener('click',()=>{
     const target = el.getAttribute('data-rlang');
@@ -4054,8 +4084,10 @@ function bindAdminExamQuestions(){
         published: publishedVal
       };
       withBusy(f, async ()=>{
-        const {ok,error} = await dbWrite(sb.from('questions').update(toSnake(updated)).eq('id', QB_STATE.editId));
+        const {correct: _k, ...updatedRow} = updated;
+        const {ok,error} = await dbWrite(sb.from('questions').update(toSnake(updatedRow)).eq('id', QB_STATE.editId));
         if(!ok) throw error;
+        await adminSetKey(QB_STATE.editId, updated.correct);
         if(q) Object.assign(q, updated);
         resetQB();
         patch({});
@@ -4073,8 +4105,10 @@ function bindAdminExamQuestions(){
         createdAt: Date.now()
       };
       withBusy(f, async ()=>{
-        const {ok,error} = await dbWrite(sb.from('questions').insert(toSnake(question)));
+        const {correct: _k, ...questionRow} = question;
+        const {ok,error} = await dbWrite(sb.from('questions').insert(toSnake(questionRow)));
         if(!ok) throw error;
+        await adminSetKey(question.id, question.correct);
         DB.questions.push(question);
         resetQB();
         patch({});
@@ -4662,7 +4696,7 @@ const REFRESH_TIMERS = {};
 const TABLE_REFETCH = {
   months:   async ()=>{ const {data,error}=await sb.from('months').select('*');   if(error) throw error; DB.months=(data||[]).map(toCamel); },
   exams:    async ()=>{ const {data,error}=await sb.from('exams').select('*');    if(error) throw error; DB.exams=(data||[]).map(toCamel); },
-  questions:async ()=>{ const {data,error}=await sb.from('questions').select('*');if(error) throw error; DB.questions=(data||[]).map(toCamel); },
+  questions:async ()=>{ const {data,error}=await sb.from('questions').select('*');if(error) throw error; DB.questions=(data||[]).map(toCamel); await mergeAdminKeys(); },
   attempts: async ()=>{ const {data,error}=await sb.from('attempts').select('*'); if(error) throw error; DB.attempts=(data||[]).map(toCamel); },
 };
 function scheduleTableRefresh(table){
