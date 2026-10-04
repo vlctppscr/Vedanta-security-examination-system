@@ -4243,7 +4243,7 @@ function bindAdminResults(){
     if(!confirm('Permanently delete this result for this security person? This action cannot be undone.')) return;
     const delId = el.getAttribute('data-delatt');
     el.disabled = true;
-    dbWrite(sb.from('attempts').delete().eq('id', delId), null, 'attempts').then(({ok,error})=>{
+    dbWriteAdmin('attempts','delete', null, {id: delId}, 'attempts').then(({ok,error})=>{
       if(!ok){ console.error(error); alert('Delete failed.\n\n'+(error&&error.message?error.message:'Please try again.')); el.disabled=false; return; }
       DB.attempts = DB.attempts.filter(a=>a.id!==delId);
       patch({});
@@ -4486,14 +4486,14 @@ function bindAdminMasterDataDetail(){
     el.disabled = true;
     try{
       /* 1) remove every exam result (attempt) of this person in one go */
-      const rAtt = await sb.from('attempts').delete().eq('guard_mobile', mobile).select('id');
+      const rAtt = await adminDb('attempts','delete', null, {guard_mobile: mobile});
       if(rAtt.error) throw rAtt.error;
       if(attCount>0 && (!rAtt.data || rAtt.data.length===0)){
         throw { message:'The database did not delete this person\'s exam results (0 rows affected). This almost always means a Row Level Security (RLS) policy on the "attempts" table is blocking the delete — nothing was removed.' };
       }
       DB.attempts = DB.attempts.filter(a=>a.guardMobile!==mobile);
       /* 2) remove the security person */
-      const rG = await dbWrite(sb.from('guards').delete().eq('mobile', mobile), 'mobile', 'guards');
+      const rG = await dbWriteAdmin('guards','delete', null, {mobile}, 'guards');
       if(!rG.ok){
         patch({});
         console.error(rG.error);
@@ -4618,7 +4618,7 @@ function bindAdminGuardProfile(){
     if(!confirm('Permanently delete this result for this security person? This action cannot be undone.')) return;
     const delId = el.getAttribute('data-delatt2');
     el.disabled = true;
-    dbWrite(sb.from('attempts').delete().eq('id', delId), null, 'attempts').then(({ok,error})=>{
+    dbWriteAdmin('attempts','delete', null, {id: delId}, 'attempts').then(({ok,error})=>{
       if(!ok){ console.error(error); alert('Delete failed.\n\n'+(error&&error.message?error.message:'Please try again.')); el.disabled=false; return; }
       DB.attempts = DB.attempts.filter(a=>a.id!==delId);
       patch({});
