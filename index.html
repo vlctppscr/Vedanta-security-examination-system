@@ -1555,7 +1555,7 @@ function canvasResizeToBlob(file, opt){
 async function uploadToStorage(fileOrBlob, keyHint, ext){
   const path = `${keyHint}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
   const { error: upErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, fileOrBlob, {
-    upsert: true, contentType: fileOrBlob.type || undefined, cacheControl: '31536000'
+    upsert: false, contentType: fileOrBlob.type || undefined, cacheControl: '31536000'
   });
   if(upErr){
     const raw = upErr.message || '';
@@ -2707,7 +2707,14 @@ function bindAdminAuth(){
       const {data, error} = await sb.rpc('verify_admin_login', {p_mobile: mobile, p_password: pw});
       if(error) throw error;
       if(!data || data.length===0){ patch({formError:'Incorrect mobile number or password.'}); return; }
-      setSession({role:'admin', mobile, name: data[0].name});
+      /* admin token: server-side proof of "this browser logged in as admin".
+         Used by later security steps; login still works if the RPC isn't set up yet. */
+      let adminToken = null;
+      try{
+        const tk = await sb.rpc('admin_issue_token', {p_mobile: mobile, p_password: pw});
+        if(!tk.error && tk.data) adminToken = tk.data;
+      }catch(e){ console.warn('admin token unavailable', e); }
+      setSession({role:'admin', mobile, name: data[0].name, token: adminToken});
       enterApp('admin-dashboard',{adminTab:'dashboard', adminNavOpen:true});
     });
   });
@@ -4727,14 +4734,15 @@ function syncAdminChannel(){
 function startLiveSync(){
   syncAdminChannel();
   setInterval(()=>{
+    if(document.hidden) return; // tab background mein ho to polling nahi (logs/egress bachta hai)
     syncAdminChannel(); // picks up login/logout without needing a page reload
     if(SESSION && SESSION.role==='admin') refreshGuardsFast();
     else{
       refreshMonthsFast();
       if(S && S.screen==='guard-month') refreshExamsFast(); // so an exam lock/unlock shows up live on the exam list
     }
-  }, 2000);
-  setInterval(refreshEverything, 30000); // safety net for everyone (new exams, edits, and a fallback if Realtime ever drops for the admin)
+  }, 5000);
+  setInterval(()=>{ if(!document.hidden) refreshEverything(); }, 60000); // safety net for everyone (new exams, edits, and a fallback if Realtime ever drops for the admin)
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refreshEverything(); });
   window.addEventListener('focus', refreshEverything);
 }
