@@ -4023,7 +4023,7 @@ function bindAdminExamQuestions(){
     if(!confirm('Delete this question?')) return;
     const delId = el.getAttribute('data-delq');
     el.disabled = true; el.textContent = 'Deleting…';
-    dbWrite(sb.from('questions').delete().eq('id', delId)).then(({ok,error})=>{
+    dbWriteAdmin('questions','delete', null, {id: delId}).then(({ok,error})=>{
       if(!ok){ console.error(error); alert('Delete failed.\n\n'+(error&&error.message?error.message:'Please try again.')); el.disabled=false; el.textContent='Delete'; return; }
       if(QB_STATE.editId===delId) resetQB();
       DB.questions = DB.questions.filter(q=>q.id!==delId);
@@ -4111,7 +4111,7 @@ function bindAdminExamQuestions(){
       };
       withBusy(f, async ()=>{
         const {correct: _k, ...updatedRow} = updated;
-        const {ok,error} = await dbWrite(sb.from('questions').update(toSnake(updatedRow)).eq('id', QB_STATE.editId));
+        const {ok,error} = await dbWriteAdmin('questions','update', toSnake(updatedRow), {id: QB_STATE.editId});
         if(!ok) throw error;
         await adminSetKey(QB_STATE.editId, updated.correct);
         if(q) Object.assign(q, updated);
@@ -4132,7 +4132,7 @@ function bindAdminExamQuestions(){
       };
       withBusy(f, async ()=>{
         const {correct: _k, ...questionRow} = question;
-        const {ok,error} = await dbWrite(sb.from('questions').insert(toSnake(questionRow)));
+        const {ok,error} = await dbWriteAdmin('questions','insert', toSnake(questionRow));
         if(!ok) throw error;
         await adminSetKey(question.id, question.correct);
         DB.questions.push(question);
@@ -4148,7 +4148,7 @@ function bindAdminExamQuestions(){
     const drafts = questionsForExam(S.adminExamId).filter(q=>!isQPublished(q));
     if(drafts.length===0) return;
     publishAllBtn.disabled = true; publishAllBtn.textContent = 'Publishing…';
-    dbWrite(sb.from('questions').update({published:true}).in('id', drafts.map(q=>q.id))).then(({ok,error})=>{
+    dbWriteAdmin('questions','update', {published:true}, {id: drafts.map(q=>q.id)}).then(({ok,error})=>{
       if(!ok){ console.error(error); alert('Publish failed.\n\n'+(error&&error.message?error.message:'Please try again.')); publishAllBtn.disabled=false; publishAllBtn.textContent='✓ Done — publish all drafts'; return; }
       drafts.forEach(q=>{ q.published = true; });
       patch({});
