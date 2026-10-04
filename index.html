@@ -1078,6 +1078,32 @@ async function adminSetKey(questionId, correct){
   const { error } = await sb.rpc('admin_set_question_key', {p_token: SESSION.token, p_question_id: questionId, p_correct: correct});
   if(error) throw error;
 }
+/* ---- admin writes go through ONE server function (admin_write) that checks
+   the admin token and only allows specific tables/operations. ---- */
+async function adminDb(table, op, data, match){
+  if(!SESSION || !SESSION.token){
+    clearSession(); alert('Admin session expired. Please log in again.'); location.reload();
+    return { data:null, error:{ message:'ADMIN_AUTH_FAILED' } };
+  }
+  const { data: res, error } = await sb.rpc('admin_write', {
+    p_token: SESSION.token, p_table: table, p_op: op, p_data: data||null, p_match: match||null
+  });
+  if(error && String(error.message||'').includes('ADMIN_AUTH_FAILED')){
+    clearSession(); alert('Admin session expired. Please log in again.'); location.reload();
+  }
+  return { data: res, error };
+}
+/* same return shape as dbWrite(): {ok, data, error} */
+async function dbWriteAdmin(table, op, data, match, label){
+  try{
+    const { data: res, error } = await adminDb(table, op, data, match);
+    if(error) return { ok:false, error };
+    if(!res || res.length===0){
+      return { ok:false, error:{ message:`The database did not apply this change (0 rows affected) on the "${label||table}" table.` } };
+    }
+    return { ok:true, data:res };
+  }catch(error){ return { ok:false, error }; }
+}
 async function loadAllData(){
   /* admins table is intentionally NOT fetched here — its select/insert
      policies were revoked so nobody's admin credentials ever reach a
@@ -3353,7 +3379,7 @@ function saveSiteSettingPartial(partial, successMsg, opts){
   const onFail = (err)=>{ console.error(err); showConfirmToast(lsOk ? 'Saved on this device' : 'Applied for now, but could not be saved (device storage full)'); };
   const dbPartial = Object.assign({}, partial);
   if(dbPartial.heroBoxes) dbPartial.heroBoxes = JSON.stringify(dbPartial.heroBoxes); // hero_boxes is a text column
-  sb.from('settings').upsert(toSnake(Object.assign({id:'site'}, dbPartial))).select('*').then(({error})=>{
+  adminDb('settings','upsert', toSnake(Object.assign({id:'site'}, dbPartial))).then(({error})=>{
     if(error) onFail(error); else showConfirmToast(successMsg);
   }).catch(onFail);
 }
@@ -3715,7 +3741,7 @@ function bindAdminSiteSettings(){
     try{ localStorage.setItem(SITE_SETTINGS_LS_KEY, JSON.stringify(SITE_SETTINGS)); }catch(err){ /* ignore */ }
     withBusy(f, async ()=>{
       try{
-        const { error } = await sb.from('settings').upsert(toSnake(updated)).select('*');
+        const { error } = await adminDb('settings','upsert', toSnake(updated));
         if(error) throw error;
         showConfirmToast('Footer settings saved');
       }catch(err){
@@ -3778,7 +3804,7 @@ function bindAdminMonths(){
     const label = MONTH_NAMES[monthNum] + ' ' + yearNum;
     const month = {id:uid('mo'), label, monthNum, year:yearNum, createdAt:Date.now(), locked:false};
     withBusy(f, async ()=>{
-      const {ok,error} = await dbWrite(sb.from('months').insert(toSnake(month)));
+      const {ok,error} = await dbWriteAdmin('months','insert', toSnake(month));
       if(!ok) throw error;
       DB.months.push(month);
       S.newMonthSel = null; S.newYearSel = null;
@@ -3792,7 +3818,7 @@ function bindAdminMonths(){
     if(!m) return;
     const newVal = !m.locked;
     el.disabled = true;
-    dbWrite(sb.from('months').update({locked:newVal}).eq('id', id)).then(({ok,error})=>{
+    dbWriteAdmin('months','update', {locked:newVal}, {id}).then(({ok,error})=>{
       if(!ok){ console.error(error); alert('Could not update the lock status.\n\n'+(error&&error.message?error.message:'Please try again.')); el.disabled=false; return; }
       m.locked = newVal;
       patch({});
@@ -3804,7 +3830,7 @@ function bindAdminMonths(){
     if(!confirm('Delete this entire month? All its exam sections, questions and attempts will also be deleted.')) return;
     const id = el.getAttribute('data-delmonth');
     el.disabled = true; el.textContent = 'Deleting…';
-    dbWrite(sb.from('months').delete().eq('id', id)).then(({ok,error})=>{
+    dbWriteAdmin('months','delete', null, {id}).then(({ok,error})=>{
       if(!ok){ console.error(error); alert('Delete failed.\n\n'+(error&&error.message?error.message:'Please try again.')); el.disabled=false; el.textContent='Delete'; return; }
       // cascade delete on the DB side already removed exams/questions/attempts under this month
       const examIds = DB.exams.filter(e=>e.monthId===id).map(e=>e.id);
@@ -3859,7 +3885,7 @@ function bindAdminMonthDetail(){
     if(!name){ alert('Exam name is required.'); return; }
     const exam = {id:uid('ex'), monthId:S.adminMonthId, nameEn:name, nameHi:name, examType:fd.get('examType'), qLang:'hi', showNameEn:true, showNameHi:false, createdAt:Date.now()};
     withBusy(f, async ()=>{
-      const {ok,error} = await dbWrite(sb.from('exams').insert(toSnake(exam)));
+      const {ok,error} = await dbWriteAdmin('exams','insert', toSnake(exam));
       if(!ok) throw error;
       DB.exams.push(exam);
       patch({});
@@ -3872,7 +3898,7 @@ function bindAdminMonthDetail(){
     if(!ex) return;
     const newVal = !ex.locked;
     el.disabled = true;
-    dbWrite(sb.from('exams').update({locked:newVal}).eq('id', id)).then(({ok,error})=>{
+    dbWriteAdmin('exams','update', {locked:newVal}, {id}).then(({ok,error})=>{
       if(!ok){
         console.error(error);
         const missing = error && /locked/i.test(error.message||'') && /column|schema/i.test(error.message||'');
@@ -3891,7 +3917,7 @@ function bindAdminMonthDetail(){
     if(!confirm('Delete this exam section and all its questions?')) return;
     const id = el.getAttribute('data-delexam');
     el.disabled = true; el.textContent = 'Deleting…';
-    dbWrite(sb.from('exams').delete().eq('id', id)).then(({ok,error})=>{
+    dbWriteAdmin('exams','delete', null, {id}).then(({ok,error})=>{
       if(!ok){ console.error(error); alert('Delete failed.\n\n'+(error&&error.message?error.message:'Please try again.')); el.disabled=false; el.textContent='Delete'; return; }
       DB.exams = DB.exams.filter(e=>e.id!==id);
       DB.questions = DB.questions.filter(q=>q.examId!==id);
@@ -3990,7 +4016,7 @@ function bindAdminExamQuestions(){
     if(ex && ex.qLang!==val){
       const prev = ex.qLang;
       ex.qLang = val; resetQB(); patch({});
-      dbWrite(sb.from('exams').update({q_lang:val}).eq('id', ex.id)).then(({ok,error})=>{ if(!ok){ console.error(error); ex.qLang = prev; alert('Could not change the question language.\n\n'+(error&&error.message?error.message:'')); patch({}); } });
+      dbWriteAdmin('exams','update', {q_lang:val}, {id: ex.id}).then(({ok,error})=>{ if(!ok){ console.error(error); ex.qLang = prev; alert('Could not change the question language.\n\n'+(error&&error.message?error.message:'')); patch({}); } });
     }
   }));
   document.querySelectorAll('[data-delq]').forEach(el=>el.addEventListener('click',()=>{
