@@ -1294,6 +1294,16 @@ function fmtDateTime(ts){
 }
 function fmtRegAt(ts){ if(!ts) return '-'; const d=fmtDateTime(ts); return d.date+', '+d.time; }
 function letter(i){ return ['A','B','C','D'][i] || '-'; }
+/* ---- Pass / Fail: passing mark = 33% of total marks, ALWAYS rounded UP
+   (100 -> 33, 20 -> 7 (6.6), 10 -> 4 (3.3)). Integer maths avoids float errors. ---- */
+const PASS_PERCENT = 33;
+function passMarkFor(total){ const t = Number(total)||0; return Math.ceil(t*PASS_PERCENT/100); }
+function isPassed(score, total){ return (Number(score)||0) >= passMarkFor(total); }
+function resultWord(score, total){ return isPassed(score,total) ? 'Pass' : 'Fail'; }
+function resultBadgeHtml(score, total){
+  const ok = isPassed(score,total);
+  return `<span class="badge ${ok?'badge-done':'badge-locked'}">${ok?'Pass':'Fail'}</span>`;
+}
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 /* ---- minimalist inline-SVG icon set (replaces emoji / logo) ---- */
@@ -2719,6 +2729,10 @@ function screenResult(){
       <div class="num" style="color:${color};">${att.score}</div>
       <div class="den">/ ${att.total} marks</div>
     </div>
+    <div style="margin:-6px 0 16px;display:flex;flex-direction:column;align-items:center;gap:6px;">
+      <span class="badge ${isPassed(att.score,att.total)?'badge-done':'badge-locked'}" style="font-size:15px;padding:6px 18px;">${resultWord(att.score,att.total)}</span>
+      <span style="font-size:12px;color:var(--muted);">Passing marks: ${passMarkFor(att.total)} / ${att.total}</span>
+    </div>
     <h2 style="margin:0 0 6px;">${examHeadlineHtml(ex)} — submitted</h2>
     <p style="color:var(--muted);font-size:13.5px;">Your score in this exam is ${att.score} out of ${att.total}. This exam is now locked until the admin approves a re-attempt.</p>
     <div style="display:flex;gap:10px;justify-content:center;margin-top:18px;flex-wrap:wrap;">
@@ -2752,10 +2766,10 @@ function screenMyExams(){
   return `
   <div class="panel-head"><div><h2>My previous exams</h2><p>All the exams you have attempted are listed here.</p></div></div>
   ${list.length===0 ? emptyState('doc','No exam attempted yet','Select a month to start taking an exam.') :
-  `<div class="table-wrap"><table><thead><tr><th>Exam</th><th>Type</th><th>Month</th><th>Date</th><th>Score</th><th></th></tr></thead><tbody>
+  `<div class="table-wrap"><table><thead><tr><th>Exam</th><th>Type</th><th>Month</th><th>Date</th><th>Score</th><th>Passing</th><th>Result</th><th></th></tr></thead><tbody>
     ${list.map(a=>{
       const ex = examById(a.examId); const m = monthById(ex.monthId); const dt = fmtDateTime(a.submittedAt);
-      return `<tr><td>${esc(examHeadlinePlain(ex))}</td><td>${ex.examType?esc(ex.examType):'-'}</td><td>${esc(m?m.label:'-')}</td><td class="mono">${dt.date} ${dt.time}</td><td class="mono">${a.score}/${a.total}</td>
+      return `<tr><td>${esc(examHeadlinePlain(ex))}</td><td>${ex.examType?esc(ex.examType):'-'}</td><td>${esc(m?m.label:'-')}</td><td class="mono">${dt.date} ${dt.time}</td><td class="mono">${a.score}/${a.total}</td><td class="mono">${passMarkFor(a.total)}</td><td>${resultBadgeHtml(a.score,a.total)}</td>
       <td><button class="btn btn-sm" data-view="${a.id}">View</button></td></tr>`;
     }).join('')}
   </tbody></table></div>`}
@@ -3055,7 +3069,7 @@ function adminDashboard(){
   const partPct = nG ? attemptedGuards.size/nG*100 : 0;
   const sumScore = atts.reduce((s,a)=>s+(a.score||0),0), sumTotal = atts.reduce((s,a)=>s+(a.total||0),0);
   const avgPct = sumTotal ? sumScore/sumTotal*100 : 0;
-  const passed = atts.filter(a=>dashPct(a)>=DASH_PASS_PCT).length;
+  const passed = atts.filter(a=>isPassed(a.score,a.total)).length;
   const passPct = atts.length ? passed/atts.length*100 : 0;
   const retakes = atts.filter(a=>a.approvedRetake).length;
   const lockedExams = DB.exams.filter(e=>e.locked).length, lockedMonths = DB.months.filter(m=>m.locked).length;
@@ -3067,7 +3081,7 @@ function adminDashboard(){
     dashKpi(2,'clipboard',DASH_COL.violet,'Total Attend',atts.length,0,'',`${retakes} retake${retakes===1?'':'s'} approved`,null),
     dashKpi(3,'target',DASH_COL.green,'Participation',partPct,1,'%',`${attemptedGuards.size} of ${nG} guards`,partPct),
     dashKpi(4,'trend',DASH_COL.blue,'Average score',avgPct,1,'%',`${sumScore} / ${sumTotal} marks`,avgPct),
-    dashKpi(5,'award',DASH_COL.green,'Pass rate',passPct,1,'%',`${passed} passed · pass mark ${DASH_PASS_PCT}%`,passPct),
+    dashKpi(5,'award',DASH_COL.green,'Pass rate',passPct,1,'%',`${passed} passed · pass mark ${PASS_PERCENT}%`,passPct),
     dashKpi(6,'lock',DASH_COL.red,'Locked exams',lockedExams,0,'',`of ${DB.exams.length} exams · ${lockedMonths} month${lockedMonths===1?'':'s'} locked`,DB.exams.length?lockedExams/DB.exams.length*100:0),
     dashKpi(7,'refresh',DASH_COL.amber,'Not Attend',Math.max(0,nG-attemptedGuards.size),0,'',`guards yet to take an exam`,nG?(nG-attemptedGuards.size)/nG*100:0),
   ].join('');
@@ -4333,11 +4347,11 @@ function adminResults(){
     ${allAttempts.length===0?emptyState('chart',isAll?'No Attend for this month yet':'No Attend for this exam yet','Results will appear here once guards attempt it.'):`
     <div class="search-box"><input type="text" id="resultsSearchInput" placeholder="Search by name or gate pass…" value="${esc(S.resultsSearchQuery||'')}"></div>
     ${attempts.length===0?emptyState('search','No guard found','Check the spelling and try again.'):
-    `<div class="table-wrap"><table><thead><tr><th>S.No.</th><th>Name</th><th>Gate pass</th><th>Post</th>${isAll?'<th>Exam type</th>':''}<th>Date</th><th>Score</th><th></th></tr></thead><tbody>
+    `<div class="table-wrap"><table><thead><tr><th>S.No.</th><th>Name</th><th>Gate pass</th><th>Post</th>${isAll?'<th>Exam type</th>':''}<th>Date</th><th>Score</th><th>Passing</th><th>Result</th><th></th></tr></thead><tbody>
       ${attempts.map((a,idx)=>{
         const g = findGuard(a.guardMobile); const dt = fmtDateTime(a.submittedAt);
         const exOfAtt = isAll ? examById(a.examId) : null;
-        return `<tr><td class="mono">${idx+1}</td><td><span class="name-link" data-profile="${esc(a.guardMobile)}">${esc(g?g.name:a.guardMobile)}</span></td><td class="mono">${esc(g?g.gatePass:'-')}</td><td>${esc(g?g.post:'-')}</td>${isAll?`<td>${esc(exOfAtt?(exOfAtt.examType||examLabel(exOfAtt)):'-')}</td>`:''}<td class="mono">${dt.date} ${dt.time}</td><td class="mono">${a.score}/${a.total}</td>
+        return `<tr><td class="mono">${idx+1}</td><td><span class="name-link" data-profile="${esc(a.guardMobile)}">${esc(g?g.name:a.guardMobile)}</span></td><td class="mono">${esc(g?g.gatePass:'-')}</td><td>${esc(g?g.post:'-')}</td>${isAll?`<td>${esc(exOfAtt?(exOfAtt.examType||examLabel(exOfAtt)):'-')}</td>`:''}<td class="mono">${dt.date} ${dt.time}</td><td class="mono">${a.score}/${a.total}</td><td class="mono">${passMarkFor(a.total)}</td><td>${resultBadgeHtml(a.score,a.total)}</td>
         <td style="display:flex;gap:6px;"><button class="btn btn-sm" data-viewatt="${a.id}">View</button><button class="btn btn-sm btn-danger btn-icon" data-delatt="${a.id}" title="Delete result">${icon('trash',14)}</button></td></tr>`;
       }).join('')}
     </tbody></table></div>`}`}
@@ -4408,7 +4422,7 @@ function exportExamExcel(examId, monthId){
     usedNames.add(out.toLowerCase());
     return out;
   };
-  const summaryHeader = ['Date','Time','Name','Gate Pass Number','Post','Mobile','Exam Type','Total Marks','Achieved Marks'];
+  const summaryHeader = ['Date','Time','Name','Gate Pass Number','Post','Mobile','Exam Type','Total Marks','Achieved Marks','Passing Marks','Result'];
   const summaryItems = [];
   const sheets = [];
   exList.forEach(ex=>{
@@ -4421,14 +4435,14 @@ function exportExamExcel(examId, monthId){
     attempts.forEach(a=>{
       const g = findGuard(a.guardMobile);
       const dt = fmtDateTime(a.submittedAt);
-      const base = [dt.date, dt.time, g?g.name:a.guardMobile, g?g.gatePass:'-', g?g.post:'-', a.guardMobile, ex.examType||'-', a.total, a.score];
+      const base = [dt.date, dt.time, g?g.name:a.guardMobile, g?g.gatePass:'-', g?g.post:'-', a.guardMobile, ex.examType||'-', a.total, a.score, passMarkFor(a.total), resultWord(a.score,a.total)];
       summaryItems.push({t:a.submittedAt, row:base});
       const row = base.slice();
       qs.forEach((q,i)=> row.push(a.answers[i]!=null ? letter(a.answers[i]) : ''));
       rows.push(row);
     });
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = header.map((h,i)=> i<9 ? {wch: Math.max(12,h.length+2)} : {wch:10});
+    ws['!cols'] = header.map((h,i)=> i<11 ? {wch: Math.max(12,h.length+2)} : {wch:10});
     styleWorksheetPro(ws);
     sheets.push({ name: isAll ? (ex.examType||ex.nameEn||ex.nameHi||'Exam') : (ex.nameEn||'Exam'), ws });
   });
@@ -4554,10 +4568,10 @@ function adminMasterDataDetail(view){
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px;"><button class="btn btn-primary btn-sm" id="mdExportBtn">⬇ Export to Excel</button></div>
     <div class="search-box"><input type="text" id="mdSearchInput" placeholder="Search by name, gate pass or mobile…" value="${esc(S.mdSearchQuery||'')}"></div>
     ${filteredRows.length===0?emptyState('search','No security person found','Check the spelling and try again.'):
-    `<div class="table-wrap"><table><thead><tr>${showRank?'<th>Rank</th>':'<th>S.No.</th>'}<th>Name</th><th>Gate pass</th><th>Mobile</th><th>Post</th>${view==='registered'?'<th>Registered on</th>':''}${showRank?'<th>Marks</th><th>Percentage</th>':''}${showMissed?'<th>Missed Exams</th>':''}</tr></thead><tbody>
+    `<div class="table-wrap"><table><thead><tr>${showRank?'<th>Rank</th>':'<th>S.No.</th>'}<th>Name</th><th>Gate pass</th><th>Mobile</th><th>Post</th>${view==='registered'?'<th>Registered on</th>':''}${showRank?'<th>Marks</th><th>Passing</th><th>Percentage</th><th>Result</th>':''}${showMissed?'<th>Missed Exams</th>':''}</tr></thead><tbody>
     ${filteredRows.map((r,idx)=>{
       const g=r.g;
-      return `<tr><td class="mono">${showRank?r.rank:idx+1}</td><td><span class="name-link" data-profile="${esc(g.mobile)}">${esc(g.name)}</span></td><td class="mono">${esc(g.gatePass)}</td><td class="mono">${esc(g.mobile)}</td><td>${esc(g.post)}</td>${view==='registered'?`<td class="mono">${fmtRegAt(g.registeredAt)}</td>`:''}${showRank?`<td class="mono">${r.achievedMarks}/${r.totalMarks}</td><td class="mono">${r.pct.toFixed(1)}%</td>`:''}${showMissed?`<td>${r.missed.length?esc(r.missed.join(', ')):'-'}</td>`:''}</tr>`;
+      return `<tr><td class="mono">${showRank?r.rank:idx+1}</td><td><span class="name-link" data-profile="${esc(g.mobile)}">${esc(g.name)}</span></td><td class="mono">${esc(g.gatePass)}</td><td class="mono">${esc(g.mobile)}</td><td>${esc(g.post)}</td>${view==='registered'?`<td class="mono">${fmtRegAt(g.registeredAt)}</td>`:''}${showRank?`<td class="mono">${r.achievedMarks}/${r.totalMarks}</td><td class="mono">${r.totalMarks>0?passMarkFor(r.totalMarks):'-'}</td><td class="mono">${r.pct.toFixed(1)}%</td><td>${r.totalMarks>0?resultBadgeHtml(r.achievedMarks,r.totalMarks):'-'}</td>`:''}${showMissed?`<td>${r.missed.length?esc(r.missed.join(', ')):'-'}</td>`:''}</tr>`;
     }).join('')}
     </tbody></table></div>`}
   </div>`;
@@ -4627,8 +4641,8 @@ function exportMasterDataExcel(view){
   let header, dataRows, title;
   if(view==='registered'){
     const ranking = guardRanking();
-    header = ['Rank','Name','Gate Pass Number','Mobile','Post','Registered On','Achieved Marks','Total Marks','Percentage'];
-    dataRows = ranking.map((r,i)=>[i+1, r.g.name, r.g.gatePass, r.g.mobile, r.g.post, fmtRegAt(r.g.registeredAt), r.achievedMarks, r.totalMarks, r.pct.toFixed(1)+'%']);
+    header = ['Rank','Name','Gate Pass Number','Mobile','Post','Registered On','Achieved Marks','Total Marks','Passing Marks','Percentage','Result'];
+    dataRows = ranking.map((r,i)=>[i+1, r.g.name, r.g.gatePass, r.g.mobile, r.g.post, fmtRegAt(r.g.registeredAt), r.achievedMarks, r.totalMarks, r.totalMarks>0?passMarkFor(r.totalMarks):'-', r.pct.toFixed(1)+'%', r.totalMarks>0?resultWord(r.achievedMarks,r.totalMarks):'-']);
     title = 'Registered security person';
   } else {
     const { attend, notAttend } = masterDataAttendance();
@@ -4734,10 +4748,10 @@ function adminGuardProfile(){
   <div class="card">
     <div class="panel-head"><div><h2>Exam history (${atts.length})</h2></div></div>
     ${atts.length===0?emptyState('doc','No exam attempted yet','',''):
-    `<div class="table-wrap"><table><thead><tr><th>S.No.</th><th>Exam</th><th>Type</th><th>Date</th><th>Score</th><th></th></tr></thead><tbody>
+    `<div class="table-wrap"><table><thead><tr><th>S.No.</th><th>Exam</th><th>Type</th><th>Date</th><th>Score</th><th>Passing</th><th>Result</th><th></th></tr></thead><tbody>
     ${attsChrono.map((a,idx)=>{
       const ex = examById(a.examId); const dt = fmtDateTime(a.submittedAt);
-      return `<tr><td class="mono">${idx+1}</td><td>${esc((ex&&((ex.nameEn||'').trim()||(ex.nameHi||'').trim()))||'-')}</td><td>${ex&&ex.examType?esc(ex.examType):'-'}</td><td class="mono">${dt.date} ${dt.time}</td><td class="mono">${a.score}/${a.total}</td>
+      return `<tr><td class="mono">${idx+1}</td><td>${esc((ex&&((ex.nameEn||'').trim()||(ex.nameHi||'').trim()))||'-')}</td><td>${ex&&ex.examType?esc(ex.examType):'-'}</td><td class="mono">${dt.date} ${dt.time}</td><td class="mono">${a.score}/${a.total}</td><td class="mono">${passMarkFor(a.total)}</td><td>${resultBadgeHtml(a.score,a.total)}</td>
       <td style="display:flex;gap:6px;"><button class="btn btn-sm" data-viewatt2="${a.id}">View</button><button class="btn btn-sm btn-danger btn-icon" data-delatt2="${a.id}" title="Delete result">${icon('trash',14)}</button></td></tr>`;
     }).join('')}
     </tbody></table></div>`}
