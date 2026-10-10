@@ -1200,25 +1200,81 @@ async function dbWriteAdmin(table, op, data, match, label){
     return { ok:true, data:res };
   }catch(error){ return { ok:false, error }; }
 }
+/* Supabase returns max 1000 rows per request. fetchAllRows pages through so that
+   1-2 saal ka data (hazaaron attempts/questions) kabhi chupchaap kat na jaye. */
+async function fetchAllRows(makeQuery, orderCol){
+  const PAGE = 1000; let from = 0; const out = [];
+  while(true){
+    const { data, error } = await makeQuery().order(orderCol).range(from, from+PAGE-1);
+    if(error) throw error;
+    const rows = data||[]; out.push(...rows);
+    if(rows.length < PAGE) break;
+    from += PAGE;
+  }
+  return out;
+}
+/* Guards ke liye questions lazy-load hote hain (sirf wahi exam jo khola ja raha hai) */
+const Q_LOADED = {}, Q_ERR = {}; let QLOAD_BUSY = false;
+function guardRequiredExamIds(){
+  if(!SESSION || SESSION.role!=='guard' || !S) return [];
+  let ids = [];
+  if(S.screen==='guard-month') ids = examsForMonth(S.monthId).map(e=>e.id);
+  else if(S.screen==='guard-exam-lang' || S.screen==='guard-exam-run') ids = [S.examId];
+  else if(S.screen==='guard-review'){ const a = DB.attempts.find(x=>x.id===S.attemptId); if(a) ids = [a.examId]; }
+  const now = Date.now();
+  return ids.filter(id=>{
+    if(!id) return false;
+    if(Q_LOADED[id] && (S.screen==='guard-exam-run' || now-Q_LOADED[id] < 180000)) return false;
+    if(Q_ERR[id] && now-Q_ERR[id] < 15000) return false;
+    return true;
+  });
+}
+async function loadGuardQuestions(ids){
+  try{
+    const rows = await fetchAllRows(()=>sb.from('questions').select('*').in('exam_id', ids),'id');
+    const set = new Set(ids);
+    DB.questions = DB.questions.filter(q=>!set.has(q.examId)).concat(rows.map(toCamel));
+    ids.forEach(id=>{ Q_LOADED[id] = Date.now(); delete Q_ERR[id]; });
+  }catch(err){ console.error('question load failed', err); ids.forEach(id=>{ Q_ERR[id] = Date.now(); }); }
+}
 async function loadAllData(){
-  /* admins table is intentionally NOT fetched here — its select/insert
-     policies were revoked so nobody's admin credentials ever reach a
-     browser; admin login goes through the verify_admin_login() RPC instead. */
-  const [g,m,e,q,at] = await Promise.all([
-    sb.from('guards_public').select('*'),
-    sb.from('months').select('*'),
-    sb.from('exams').select('*'),
-    sb.from('questions').select('*'),
-    sb.from('attempts').select('*'),
-  ]);
-  const firstErr = [g,m,e,q,at].find(r=>r.error);
-  if(firstErr) throw firstErr.error;
-  DB.guards = (g.data||[]).map(guardRowToObj);
-  DB.months = (m.data||[]).map(toCamel);
-  DB.exams = (e.data||[]).map(toCamel);
-  DB.questions = (q.data||[]).map(toCamel);
-  DB.attempts = (at.data||[]).map(toCamel);
-  await mergeAdminKeys();
+  /* admins table is intentionally NOT fetched here (admin login goes through RPC).
+     Admin: sab kuch (paginated). Guard: months + exams + sirf apne attempts + apni guard row.
+     Logged-out: sirf months + exams. Questions guards ke liye lazy-load hote hain. */
+  const role = SESSION && SESSION.role;
+  const mJob = fetchAllRows(()=>sb.from('months').select('*'),'id');
+  const eJob = fetchAllRows(()=>sb.from('exams').select('*'),'id');
+  if(role==='admin'){
+    const [m,e,g,q,at] = await Promise.all([
+      mJob, eJob,
+      fetchAllRows(()=>sb.from('guards_public').select('*'),'mobile'),
+      fetchAllRows(()=>sb.from('questions').select('*'),'id'),
+      fetchAllRows(()=>sb.from('attempts').select('*'),'id'),
+    ]);
+    DB.guards = g.map(guardRowToObj);
+    DB.months = m.map(toCamel);
+    DB.exams = e.map(toCamel);
+    DB.questions = q.map(toCamel);
+    DB.attempts = at.map(toCamel);
+    await mergeAdminKeys();
+    return;
+  }
+  if(role==='guard'){
+    const [m,e,at,gr] = await Promise.all([
+      mJob, eJob,
+      fetchAllRows(()=>sb.from('attempts').select('*').eq('guard_mobile', SESSION.mobile),'id'),
+      sb.from('guards_public').select('*').eq('mobile', SESSION.mobile),
+    ]);
+    if(gr.error) throw gr.error;
+    DB.months = m.map(toCamel);
+    DB.exams = e.map(toCamel);
+    DB.attempts = at.map(toCamel);
+    if(gr.data && gr.data.length) DB.guards = gr.data.map(guardRowToObj);
+    return;
+  }
+  const [m,e] = await Promise.all([mJob, eJob]);
+  DB.months = m.map(toCamel);
+  DB.exams = e.map(toCamel);
 }
 async function withBusy(form, fn){
   const btn = form.querySelector('button[type="submit"]');
@@ -1794,7 +1850,7 @@ let SESSION = JSON.parse(localStorage.getItem('ssms_session_v1')||'null'); // {r
 applyBranding(); // logo + poster from the cached settings before the first paint
 
 function setSession(sess){ SESSION = sess; localStorage.setItem('ssms_session_v1', JSON.stringify(sess)); }
-function clearSession(){ SESSION = null; localStorage.removeItem('ssms_session_v1'); HISTORY = []; }
+function clearSession(){ SESSION = null; localStorage.removeItem('ssms_session_v1'); HISTORY = []; DB.guards = []; DB.attempts = []; DB.questions = []; for(const k in Q_LOADED) delete Q_LOADED[k]; }
 
 /* ---- navigation history, driving the phone/browser's own physical back
    button/gesture only — there is no on-screen Back button anywhere in this
@@ -2021,6 +2077,13 @@ function examTypeChip(ex){
 const SECURE_SCREENS = ['guard-exam-run','guard-review'];
 let LAST_RENDER_KEY = null;
 function render(){
+  const _needQ = guardRequiredExamIds();
+  if(_needQ.length){
+    const _mw = document.getElementById('mainwrap');
+    if(_mw) _mw.innerHTML = '<div style="padding:60px 16px;text-align:center;color:var(--muted);font-size:14px;">Loading…</div>';
+    if(!QLOAD_BUSY){ QLOAD_BUSY = true; loadGuardQuestions(_needQ).finally(()=>{ QLOAD_BUSY = false; render(); }); }
+    return;
+  }
   applyTheme();
   applyBranding();
   const app = document.getElementById('app');
@@ -2332,7 +2395,7 @@ function bindHome(){
   document.querySelectorAll('.role-card').forEach(el=>{
     el.addEventListener('click',()=>{
       const r = el.getAttribute('data-go');
-      go(r==='guard'?'guard-auth':'admin-auth', {authTab: r==='guard' && DB.guards.length===0 ? 'register' : 'login'});
+      go(r==='guard'?'guard-auth':'admin-auth', {authTab: 'login'});
     });
   });
 }
@@ -2414,6 +2477,7 @@ function bindGuardAuth(){
       const existing = findGuard(mobile);
       if(existing) Object.assign(existing, guard); else DB.guards.push(guard);
       setSession({role:'guard', mobile, name: guard.name, gatePass: guard.gatePass, post: guard.post});
+      await loadAllData();
       enterApp('guard-dashboard');
     });
   });
@@ -2442,6 +2506,7 @@ function bindGuardAuth(){
       const guard = { mobile: row.mobile, name: row.name, gatePass: row.gate_pass, post: row.post, seenExams: [] };
       DB.guards.push(guard);
       setSession({role:'guard', mobile, name: guard.name, gatePass: guard.gatePass, post: guard.post});
+      await loadAllData();
       enterApp('guard-dashboard');
     });
   });
@@ -2525,6 +2590,11 @@ function bindGuardMonth(){
       const att = latestAttempt(SESSION.mobile, examId);
       const exNow = examById(examId);
       if(exNow && exNow.locked && (!att || att.approvedRetake)){ alert('This exam is locked by the admin. Please check back later.'); return; }
+      if((!att || att.approvedRetake) && publishedQuestionsForExam(examId).length===0){
+        delete Q_LOADED[examId]; delete Q_ERR[examId];
+        alert('Questions could not be loaded (or none are published yet). Please check your internet and try again.');
+        render(); return;
+      }
       if(att && !att.approvedRetake){
         go('guard-review', {attemptId: att.id, from:'guard-month', monthId:S.monthId});
       } else {
@@ -2899,6 +2969,7 @@ function bindAdminAuth(){
         if(!tk.error && tk.data) adminToken = tk.data;
       }catch(e){ console.warn('admin token unavailable', e); }
       setSession({role:'admin', mobile, name: data[0].name, token: adminToken});
+      await loadAllData();
       enterApp('admin-dashboard',{adminTab:'dashboard', adminNavOpen:true});
     });
   });
@@ -4899,10 +4970,10 @@ function isSafeToRepaint(){
 }
 const REFRESH_TIMERS = {};
 const TABLE_REFETCH = {
-  months:   async ()=>{ const {data,error}=await sb.from('months').select('*');   if(error) throw error; DB.months=(data||[]).map(toCamel); },
-  exams:    async ()=>{ const {data,error}=await sb.from('exams').select('*');    if(error) throw error; DB.exams=(data||[]).map(toCamel); },
-  questions:async ()=>{ const {data,error}=await sb.from('questions').select('*');if(error) throw error; DB.questions=(data||[]).map(toCamel); await mergeAdminKeys(); },
-  attempts: async ()=>{ const {data,error}=await sb.from('attempts').select('*'); if(error) throw error; DB.attempts=(data||[]).map(toCamel); },
+  months:   async ()=>{ const rows=await fetchAllRows(()=>sb.from('months').select('*'),'id'); DB.months=rows.map(toCamel); },
+  exams:    async ()=>{ const rows=await fetchAllRows(()=>sb.from('exams').select('*'),'id'); DB.exams=rows.map(toCamel); },
+  questions:async ()=>{ const rows=await fetchAllRows(()=>sb.from('questions').select('*'),'id'); DB.questions=rows.map(toCamel); await mergeAdminKeys(); },
+  attempts: async ()=>{ const rows=await fetchAllRows(()=>sb.from('attempts').select('*'),'id'); DB.attempts=rows.map(toCamel); },
 };
 function scheduleTableRefresh(table){
   // debounce: a burst of changes to the same table (e.g. "publish all
@@ -4911,7 +4982,7 @@ function scheduleTableRefresh(table){
   REFRESH_TIMERS[table] = setTimeout(async ()=>{
     try{ await TABLE_REFETCH[table](); if(isSafeToRepaint()) render(); }
     catch(err){ console.error('live sync refresh failed for', table, err); }
-  }, 120);
+  }, 1500);
 }
 async function refreshMonthsFast(){
   try{ await TABLE_REFETCH.months(); if(isSafeToRepaint()) render(); }
@@ -4923,11 +4994,34 @@ async function refreshExamsFast(){
 }
 async function refreshGuardsFast(){
   try{
-    const {data,error} = await sb.from('guards_public').select('*');
-    if(error) throw error;
-    DB.guards = (data||[]).map(guardRowToObj);
+    const rows = await fetchAllRows(()=>sb.from('guards_public').select('*'),'mobile');
+    DB.guards = rows.map(guardRowToObj);
     if(isSafeToRepaint()) render();
   }catch(err){ console.error('guard refresh failed', err); }
+}
+let LAST_GUARD_COUNT = null;
+async function checkGuardsChanged(){
+  /* head+count request: almost zero egress. Poori list tabhi laate hain jab count badla ho. */
+  try{
+    const { count, error } = await sb.from('guards_public').select('mobile',{count:'exact',head:true});
+    if(error) throw error;
+    if(count!==LAST_GUARD_COUNT){ LAST_GUARD_COUNT = count; await refreshGuardsFast(); }
+  }catch(err){ console.error('guard count check failed', err); }
+}
+/* attempts: realtime se aayi row seedhe merge (poori table dobara download nahi) */
+function applyAttemptChange(p){
+  try{
+    if(p.eventType==='DELETE'){
+      const id = p.old && p.old.id;
+      if(!id) return scheduleTableRefresh('attempts');
+      DB.attempts = DB.attempts.filter(a=>a.id!==id);
+    } else if(p.new && p.new.id){
+      const row = toCamel(p.new); const i = DB.attempts.findIndex(a=>a.id===row.id);
+      if(i>=0) DB.attempts[i] = row; else DB.attempts.push(row);
+    } else return scheduleTableRefresh('attempts');
+    clearTimeout(REFRESH_TIMERS.attemptsRender);
+    REFRESH_TIMERS.attemptsRender = setTimeout(()=>{ if(isSafeToRepaint()) render(); }, 400);
+  }catch(err){ scheduleTableRefresh('attempts'); }
 }
 let FULL_REFRESH_IN_FLIGHT = false;
 async function refreshEverything(){
@@ -4962,7 +5056,8 @@ function syncAdminChannel(){
   if(isAdmin && !ADMIN_CHANNEL){
     ADMIN_CHANNEL = sb.channel('vses-live-admin');
     Object.keys(TABLE_REFETCH).forEach(table=>{
-      ADMIN_CHANNEL.on('postgres_changes', {event:'*', schema:'public', table}, ()=>scheduleTableRefresh(table));
+      if(table==='attempts') ADMIN_CHANNEL.on('postgres_changes', {event:'*', schema:'public', table}, applyAttemptChange);
+      else ADMIN_CHANNEL.on('postgres_changes', {event:'*', schema:'public', table}, ()=>scheduleTableRefresh(table));
     });
     ADMIN_CHANNEL.subscribe();
   } else if(!isAdmin && ADMIN_CHANNEL){
@@ -4970,20 +5065,34 @@ function syncAdminChannel(){
     ADMIN_CHANNEL = null;
   }
 }
+let LAST_FULL_REFRESH = Date.now();
+function maybeFullRefresh(minAgeMs){
+  if(document.hidden) return;
+  if(Date.now()-LAST_FULL_REFRESH < minAgeMs) return;
+  if(SESSION && SESSION.role==='guard' && S && S.screen==='guard-exam-run') return; // exam ke dauran koi refresh nahi
+  LAST_FULL_REFRESH = Date.now();
+  refreshEverything();
+}
 function startLiveSync(){
   syncAdminChannel();
+  LAST_GUARD_COUNT = DB.guards.length;
+  let tick = 0;
   setInterval(()=>{
-    if(document.hidden) return; // tab background mein ho to polling nahi (logs/egress bachta hai)
-    syncAdminChannel(); // picks up login/logout without needing a page reload
-    if(SESSION && SESSION.role==='admin') refreshGuardsFast();
-    else{
+    if(document.hidden) return; // tab background mein ho to polling nahi
+    tick++;
+    syncAdminChannel();
+    const isAdm = SESSION && SESSION.role==='admin';
+    if(isAdm){ if(tick%3===0) checkGuardsChanged(); }          // ~15 sec, head-count only
+    else if(!(S && S.screen==='guard-exam-run') && tick%3===0){ // ~15 sec, chhoti tables, exam ke dauran band
       refreshMonthsFast();
-      if(S && S.screen==='guard-month') refreshExamsFast(); // so an exam lock/unlock shows up live on the exam list
+      if(S && S.screen==='guard-month') refreshExamsFast();
     }
   }, 5000);
-  setInterval(()=>{ if(!document.hidden) refreshEverything(); }, 60000); // safety net for everyone (new exams, edits, and a fallback if Realtime ever drops for the admin)
-  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refreshEverything(); });
-  window.addEventListener('focus', refreshEverything);
+  // safety-net full refresh: admin 10 min, guard 5 min (guard ke liye ye sirf months+exams+apne attempts hai)
+  setInterval(()=>{ maybeFullRefresh((SESSION && SESSION.role==='admin') ? 10*60*1000 : 5*60*1000); }, 60000);
+  const onBack = ()=>{ maybeFullRefresh((SESSION && SESSION.role==='admin') ? 5*60*1000 : 3*60*1000); };
+  document.addEventListener('visibilitychange', onBack);
+  window.addEventListener('focus', onBack);
 }
 </script>
 </body>
