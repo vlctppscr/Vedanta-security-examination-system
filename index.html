@@ -2560,7 +2560,15 @@ function emptyState(iconName,title,sub){
 function screenGuardMonth(){
   const m = monthById(S.monthId);
   if(!m) return emptyState('warn','Month not found','Go back to the dashboard.');
-  const exams = examsForMonth(m.id);
+  // order: 1) unlocked & not attended (incl. re-attempt allowed)  2) completed/submitted  3) locked by admin; creation order inside each group
+  const _rank = ex=>{
+    const a = latestAttempt(SESSION.mobile, ex.id);
+    if(ex.locked && (!a || a.approvedRetake)) return 2;
+    if(a && !a.approvedRetake) return 1;
+    return 0;
+  };
+  const exams = examsForMonth(m.id).map((ex,i)=>({ex,i,r:_rank(ex)}))
+    .sort((x,y)=>(x.r-y.r)||(x.i-y.i)).map(o=>o.ex);
   return `
   <div class="panel-head"><div><h2>${esc(m.label)}</h2><p>This month's exam sections are listed below.</p></div></div>
   ${exams.length===0 ? emptyState('doc','No exam in this month yet','Exam sections will appear here once the admin creates them.') :
