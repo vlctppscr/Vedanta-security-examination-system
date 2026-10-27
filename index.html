@@ -1112,6 +1112,12 @@ thead th{letter-spacing:.09em;}
 .stat-row-6{grid-template-columns:repeat(6,1fr);}
 @media (max-width:1100px){.stat-row-6{grid-template-columns:repeat(3,1fr);}}
 @media (max-width:480px){.stat-row-6{grid-template-columns:1fr 1fr;}}
+.item-row.is-click{cursor:pointer;transition:.15s border-color,.15s background;}
+.item-row.is-click:hover{border-color:var(--amber);}
+.item-row .actions .icon-edit-btn,.item-row .actions .lock-toggle{flex-shrink:0;}
+.panel-head .icon-del-btn{flex-shrink:0;width:34px;height:34px;}
+.exam-edit-form{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;width:100%;}
+.exam-edit-form .field{margin-bottom:0;}
 </style>
 </head>
 <body>
@@ -4115,11 +4121,9 @@ function adminMonths(){
       const exams = examsForMonth(m.id);
       const added = m.createdAt ? ` · Added ${fmtDateTime(m.createdAt).date}` : '';
       const locked = !!m.locked;
-      return `<div class="item-row"><div class="info"><b>${esc(m.label)}</b><span>${exams.length} exam section${exams.length===1?'':'s'}${added}</span></div>
+      return `<div class="item-row is-click" data-openmonth="${m.id}"><div class="info"><b>${esc(m.label)}</b><span>${exams.length} exam section${exams.length===1?'':'s'}${added}</span></div>
       <div class="actions">
-      <button class="lock-toggle ${locked?'is-locked':'is-unlocked'}" data-lockmonth="${m.id}" title="${locked?'Locked — click to unlock for security persons':'Unlocked — click to lock for security persons'}">${icon(locked?'lock':'unlock',15)}</button>
-      <button class="btn btn-sm" data-openmonth="${m.id}">Manage exams →</button>
-      <button class="btn btn-sm btn-danger" data-delmonth="${m.id}">Delete</button></div></div>`;
+      <button class="lock-toggle ${locked?'is-locked':'is-unlocked'}" data-lockmonth="${m.id}" title="${locked?'Locked \u2014 click to unlock for security persons':'Unlocked \u2014 click to lock for security persons'}">${icon(locked?'lock':'unlock',15)}</button></div></div>`;
     }).join('')}
   </div>`;
 }
@@ -4146,7 +4150,8 @@ function bindAdminMonths(){
       showConfirmToast('Month added');
     });
   });
-  document.querySelectorAll('[data-lockmonth]').forEach(el=>el.addEventListener('click',()=>{
+  document.querySelectorAll('[data-lockmonth]').forEach(el=>el.addEventListener('click',(ev)=>{
+    ev.stopPropagation();
     const id = el.getAttribute('data-lockmonth');
     const m = monthById(id);
     if(!m) return;
@@ -4163,26 +4168,41 @@ function bindAdminMonths(){
   document.querySelectorAll('[data-delmonth]').forEach(el=>el.addEventListener('click',()=>{
     if(!confirm('Delete this entire month? All its exam sections, questions and attempts will also be deleted.')) return;
     const id = el.getAttribute('data-delmonth');
-    el.disabled = true; el.textContent = 'Deleting…';
+    el.disabled = true;
     dbWriteAdmin('months','delete', null, {id}).then(({ok,error})=>{
-      if(!ok){ console.error(error); alert('Delete failed.\n\n'+(error&&error.message?error.message:'Please try again.')); el.disabled=false; el.textContent='Delete'; return; }
+      if(!ok){ console.error(error); alert('Delete failed.\n\n'+(error&&error.message?error.message:'Please try again.')); el.disabled=false; return; }
       // cascade delete on the DB side already removed exams/questions/attempts under this month
       const examIds = DB.exams.filter(e=>e.monthId===id).map(e=>e.id);
       DB.exams = DB.exams.filter(e=>e.monthId!==id);
       DB.questions = DB.questions.filter(q=>!examIds.includes(q.examId));
       DB.attempts = DB.attempts.filter(a=>!examIds.includes(a.examId));
       DB.months = DB.months.filter(m=>m.id!==id);
-      patch({});
       showConfirmToast('Month deleted', 'danger');
+      leaveDeletedView('adminMonthId');
     });
   }));
+}
+/* after deleting the month/exam we are inside, step back so neither the screen nor the back button points at a deleted item */
+function leaveDeletedView(key){
+  const gone = S[key];
+  let target = null;
+  while(HISTORY.length){
+    const h = HISTORY.pop();
+    if(!h[key] || h[key]!==gone){ target = h; break; }
+  }
+  if(!target){ target = Object.assign({}, S); target[key] = null; if(key==='adminMonthId') target.adminExamId = null; if(key==='adminExamId'){ target.adminTab='months'; } }
+  S = target;
+  resetQB();
+  window.scrollTo({top:0,behavior:'instant'});
+  render();
 }
 function adminMonthDetail(monthId){
   const m = monthById(monthId);
   const exams = examsForMonth(monthId);
   return `
   <div class="card">
-    <div class="panel-head"><div><h2>${esc(m.label)}</h2><p>Exam sections for this month.</p></div></div>
+    <div class="panel-head"><div><h2>${esc(m.label)}</h2><p>Exam sections for this month.</p></div>
+      <button class="icon-del-btn" type="button" data-delmonth="${m.id}" title="Delete this month" aria-label="Delete month">${icon('trash',16)}</button></div>
     <form id="addExamForm" style="margin-bottom:18px;">
       <div class="field" style="max-width:520px;">
         <label>Exam name</label>
@@ -4202,11 +4222,16 @@ function adminMonthDetail(monthId){
       const f2 = examShowFlags(ex);
       const langChip = '';
       const exLocked = !!ex.locked;
-      return `<div class="item-row"><div class="info"><b>${esc(ex.nameEn)}${(ex.nameHi && ex.nameHi.trim() && ex.nameHi.trim()!==(ex.nameEn||'').trim())?' / '+esc(ex.nameHi):''}${typeChip}${langChip}</b><span>${qc} question${qc===1?'':'s'}${dropped}</span></div>
+      if(S.editExamId===ex.id){
+        return `<div class="item-row"><form class="exam-edit-form" data-editform="${ex.id}">
+          <div class="field" style="flex:1;min-width:220px;"><label>Exam name</label><input type="text" name="nameEn" value="${esc(ex.nameEn||'')}" required></div>
+          <div class="field" style="min-width:170px;"><label>Exam type</label><select name="examType">${EXAM_TYPES.concat(ex.examType && !EXAM_TYPES.includes(ex.examType) ? [ex.examType] : []).map(t=>`<option value="${esc(t)}" ${t===ex.examType?'selected':''}>${esc(t)}</option>`).join('')}</select></div>
+          <button class="btn btn-primary btn-sm" type="submit">Save</button><button class="btn btn-ghost btn-sm" type="button" data-canceledit="1">Cancel</button></form></div>`;
+      }
+      return `<div class="item-row is-click" data-openexam="${ex.id}"><div class="info"><b>${esc(ex.nameEn)}${(ex.nameHi && ex.nameHi.trim() && ex.nameHi.trim()!==(ex.nameEn||'').trim())?' / '+esc(ex.nameHi):''}${typeChip}${langChip}</b><span>${qc} question${qc===1?'':'s'}${dropped}</span></div>
       <div class="actions">
-      <button class="lock-toggle ${exLocked?'is-locked':'is-unlocked'}" data-lockexam="${ex.id}" title="${exLocked?'Locked — click to unlock for security persons':'Unlocked — click to lock for security persons'}">${icon(exLocked?'lock':'unlock',15)}</button>
-      <button class="btn btn-sm" data-openexam="${ex.id}">Manage questions →</button>
-      <button class="btn btn-sm btn-danger" data-delexam="${ex.id}">Delete</button></div></div>`;
+      <button class="lock-toggle ${exLocked?'is-locked':'is-unlocked'}" data-lockexam="${ex.id}" title="${exLocked?'Locked \u2014 click to unlock for security persons':'Unlocked \u2014 click to lock for security persons'}">${icon(exLocked?'lock':'unlock',15)}</button>
+      <button class="icon-edit-btn" type="button" data-editexam="${ex.id}" title="Edit exam name and type" aria-label="Edit exam">${icon('edit',14)}</button></div></div>`;
     }).join('')}
   </div>`;
 }
@@ -4226,7 +4251,25 @@ function bindAdminMonthDetail(){
       showConfirmToast('Exam section added');
     });
   });
-  document.querySelectorAll('[data-lockexam]').forEach(el=>el.addEventListener('click',()=>{
+  document.querySelectorAll('[data-editexam]').forEach(el=>el.addEventListener('click',(ev)=>{ ev.stopPropagation(); patch({editExamId:el.getAttribute('data-editexam')}); }));
+  document.querySelectorAll('[data-canceledit]').forEach(el=>el.addEventListener('click',()=>patch({editExamId:null})));
+  document.querySelectorAll('[data-editform]').forEach(fm=>fm.addEventListener('submit',e=>{
+    e.preventDefault();
+    const id = fm.getAttribute('data-editform'), ex = examById(id); if(!ex) return;
+    const fd = new FormData(fm);
+    const name = (fd.get('nameEn')||'').trim();
+    if(!name){ alert('Exam name is required.'); return; }
+    const examType = fd.get('examType');
+    withBusy(fm, async ()=>{
+      const {ok,error} = await dbWriteAdmin('exams','update', toSnake({nameEn:name, nameHi:name, examType}), {id});
+      if(!ok) throw error;
+      ex.nameEn = name; ex.nameHi = name; ex.examType = examType;
+      patch({editExamId:null});
+      showConfirmToast('Exam updated');
+    });
+  }));
+  document.querySelectorAll('[data-lockexam]').forEach(el=>el.addEventListener('click',(ev)=>{
+    ev.stopPropagation();
     const id = el.getAttribute('data-lockexam');
     const ex = examById(id);
     if(!ex) return;
@@ -4247,19 +4290,6 @@ function bindAdminMonthDetail(){
     });
   }));
   document.querySelectorAll('[data-openexam]').forEach(el=>el.addEventListener('click',()=>goPush({adminTab:'exam', adminExamId:el.getAttribute('data-openexam')})));
-  document.querySelectorAll('[data-delexam]').forEach(el=>el.addEventListener('click',()=>{
-    if(!confirm('Delete this exam section and all its questions?')) return;
-    const id = el.getAttribute('data-delexam');
-    el.disabled = true; el.textContent = 'Deleting…';
-    dbWriteAdmin('exams','delete', null, {id}).then(({ok,error})=>{
-      if(!ok){ console.error(error); alert('Delete failed.\n\n'+(error&&error.message?error.message:'Please try again.')); el.disabled=false; el.textContent='Delete'; return; }
-      DB.exams = DB.exams.filter(e=>e.id!==id);
-      DB.questions = DB.questions.filter(q=>q.examId!==id);
-      DB.attempts = DB.attempts.filter(a=>a.examId!==id);
-      patch({});
-      showConfirmToast('Exam section deleted', 'danger');
-    });
-  }));
 }
 
 /* --- Admin: Exam question editor --- */
@@ -4275,8 +4305,11 @@ function adminExamQuestions(){
   return `
   <div class="card" style="margin-bottom:16px;">
     <div class="panel-head">
-      <div><h2>${QB_STATE.editId?'Edit MCQ question':'Add MCQ question'}</h2><p>${qLangHint} Select the correct option using the radio button.</p></div>
-      ${QB_STATE.editId?`<button class="btn btn-ghost btn-sm" type="button" id="cancelEditBtn">✕ Cancel edit</button>`:''}
+      <div><h2>${QB_STATE.editId?'Edit MCQ question':'Add MCQ question'}</h2>
+        <p style="color:var(--amber);font-weight:700;font-size:14px;margin-bottom:4px;">${esc(ex.nameEn||'')}${ex.examType?` <span class="chip" style="margin-left:6px;">${esc(ex.examType)}</span>`:''}</p>
+        <p>${qLangHint} Select the correct option using the radio button.</p></div>
+      <div style="display:flex;gap:8px;align-items:center;">${QB_STATE.editId?`<button class="btn btn-ghost btn-sm" type="button" id="cancelEditBtn">✕ Cancel edit</button>`:''}
+      <button class="icon-del-btn" type="button" data-delexam="${ex.id}" title="Delete this exam" aria-label="Delete exam">${icon('trash',16)}</button></div>
     </div>
     ${QB_STATE.editId?`<div class="info-box">You are editing question #${qs.findIndex(q=>q.id===QB_STATE.editId)+1}.</div>`:''}
     <form id="addQForm">
@@ -4345,6 +4378,19 @@ function renderOptBuilders(qLang){
 }
 function bindAdminExamQuestions(){
   const ex = examById(S.adminExamId);
+  document.querySelectorAll('[data-delexam]').forEach(el=>el.addEventListener('click',()=>{
+    if(!confirm('Delete this exam section and all its questions?')) return;
+    const id = el.getAttribute('data-delexam');
+    el.disabled = true;
+    dbWriteAdmin('exams','delete', null, {id}).then(({ok,error})=>{
+      if(!ok){ console.error(error); alert('Delete failed.\n\n'+(error&&error.message?error.message:'Please try again.')); el.disabled=false; return; }
+      DB.exams = DB.exams.filter(e=>e.id!==id);
+      DB.questions = DB.questions.filter(q=>q.examId!==id);
+      DB.attempts = DB.attempts.filter(a=>a.examId!==id);
+      showConfirmToast('Exam section deleted', 'danger');
+      leaveDeletedView('adminExamId');
+    });
+  }));
   document.querySelectorAll('[data-qlang]').forEach(el=>el.addEventListener('click',()=>{
     const val = el.getAttribute('data-qlang');
     if(ex && ex.qLang!==val){
