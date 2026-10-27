@@ -1109,6 +1109,9 @@ thead th{letter-spacing:.09em;}
 @media (max-width:900px){.stat-row-5{grid-template-columns:repeat(3,1fr);}}
 @media (max-width:420px){.stat-row-5{grid-template-columns:1fr 1fr;}}
 .mdhead-actions{display:flex;gap:8px;flex-wrap:wrap;}
+.stat-row-6{grid-template-columns:repeat(6,1fr);}
+@media (max-width:1100px){.stat-row-6{grid-template-columns:repeat(3,1fr);}}
+@media (max-width:480px){.stat-row-6{grid-template-columns:1fr 1fr;}}
 </style>
 </head>
 <body>
@@ -1373,12 +1376,31 @@ function listDetailHtml(kind, scope, q, searchVal, suffix){
     mono = [0,2,3,5];
   } else if(kind==='exams' || kind==='locked'){
     title = kind==='exams' ? 'Exam sections' : 'Locked exams';
-    head = ['S.No.','Month','Exam','Exam type','Questions','Attend','Status'];
+    head = ['S.No.','Month','Exam','Exam type','Questions','Attend','Not Attend','Status'];
     const src = kind==='exams' ? scope.exams : DB.exams.filter(e=>e.locked);
     const exs = src.slice().sort((a,b)=>{ const ma=monthById(a.monthId), mb=monthById(b.monthId); return ((ma&&ma.year)||0)-((mb&&mb.year)||0) || ((ma&&ma.monthNum)||0)-((mb&&mb.monthNum)||0) || a.createdAt-b.createdAt; });
     rows = exs.filter(e=>{ if(!q) return true; const m=monthById(e.monthId); return examLabel(e).toLowerCase().includes(q) || (m&&m.label.toLowerCase().includes(q)); })
-      .map((e,i)=>{ const m=monthById(e.monthId); return [i+1, esc(m?m.label:'-'), esc((e.nameEn||'').trim()||(e.nameHi||'').trim()||'-'), esc(e.examType||'-'), String(questionsForExam(e.id).length), String(DB.attempts.filter(a=>a.examId===e.id).length), e.locked?'Locked':'Open']; });
-    mono = [0,4,5];
+      .map((e,i)=>{ const m=monthById(e.monthId); const set=new Set(DB.attempts.filter(a=>a.examId===e.id).map(a=>a.guardMobile)); const na=DB.guards.filter(g=>!set.has(g.mobile)).length;
+        return [i+1, esc(m?m.label:'-'), esc((e.nameEn||'').trim()||(e.nameHi||'').trim()||'-'), esc(e.examType||'-'), String(questionsForExam(e.id).length),
+          `<span class="name-link" style="color:var(--green);" data-examlist="ea:${esc(e.id)}">${set.size}</span>`,
+          `<span class="name-link" style="color:var(--red);" data-examlist="en:${esc(e.id)}">${na}</span>`, e.locked?'Locked':'Open']; });
+    mono = [0,4,5,6];
+  } else if(/^(ea|en):/.test(kind)){
+    const t = kind.slice(0,2), id = kind.slice(3), ex = examById(id);
+    const set = new Set(DB.attempts.filter(a=>a.examId===id).map(a=>a.guardMobile));
+    title = (t==='ea'?'Attend':'Not Attend') + (ex ? ' \u2014 ' + (((ex.nameEn||'').trim()||examLabel(ex)) + ' (' + (ex.examType||'-') + ')') : '');
+    head = ['S.No.','Name','Gate pass','Mobile','Post','Registered on'];
+    rows = guardRows(DB.guards.filter(g=> (t==='ea') === set.has(g.mobile)));
+    mono = [0,2,3,5];
+  } else if(kind==='gpass' || kind==='gfail'){
+    title = kind==='gpass' ? 'Pass' : 'Fail';
+    head = ['S.No.','Name','Gate pass','Post','Achieved','Total','%','Result'];
+    const exl = scope.exList || [];
+    rows = DB.guards.filter(g=>attended.has(g.mobile) && gMatch(g)).map(g=>({g, m:guardMarksIn(g.mobile, exl)}))
+      .filter(r=>r.m.tot>0 && (isPassed(r.m.ach,r.m.tot) === (kind==='gpass')))
+      .sort((a,b)=>b.m.ach/b.m.tot - a.m.ach/a.m.tot)
+      .map((r,i)=>[i+1, `<span class="name-link" data-profile="${esc(r.g.mobile)}">${esc(r.g.name)}</span>`, esc(r.g.gatePass), esc(r.g.post), r.m.ach, r.m.tot, pctStr(r.m.ach,r.m.tot), resultBadgeHtml(r.m.ach,r.m.tot)]);
+    mono = [0,2,4,5,6];
   } else {
     title = kind==='avg' ? 'Average score — all attempts' : (kind==='pass' ? 'Pass rate — all attempts' : 'Total Attend');
     head = ['S.No.','Name','Gate pass','Post','Month','Exam type','Date','Score','%','Result'];
@@ -1411,6 +1433,7 @@ function bindDashDetail(){
   const inp = document.getElementById('mdSearchInput');
   if(inp) inp.addEventListener('input',()=>patch({dashSearch:inp.value}));
   document.querySelectorAll('[data-profile]').forEach(el=>el.addEventListener('click',()=>goPush({adminTab:'guardprofile', profileMobile:el.getAttribute('data-profile')})));
+  document.querySelectorAll('[data-examlist]').forEach(el=>el.addEventListener('click',()=>goPush({dashView:el.getAttribute('data-examlist'), dashSearch:''})));
 }
 /* ---- pass / fail helpers (pass mark = 33% of combined marks of the latest attempt in each exam) ---- */
 function guardMarksIn(mobile, exList){
@@ -4511,12 +4534,19 @@ function adminResults(){
   const totalGuards = DB.guards.length;
   const attemptedCount = new Set(allAttempts.map(a=>a.guardMobile)).size;
   const examsAttemptedCount = new Set(DB.attempts.map(a=>a.examId).filter(id=>DB.exams.some(e=>e.id===id))).size;
+  const scopeExList = isAll ? exams : exams.filter(e=>e.id===selExam);
+  const attSet = new Set(allAttempts.map(a=>a.guardMobile));
+  const notAttCount = DB.guards.filter(g=>!attSet.has(g.mobile)).length;
+  const pf = passFailFor(attSet, scopeExList);
+  const scopeTxt = isAll?'(this month)':'(this exam)';
   return `
-  <div class="stat-row">
+  <div class="stat-row stat-row-6">
     <div class="stat-box clickable" data-resbox="registered"><div class="n">${totalGuards}</div><div class="l">Registered Security personnel</div><span class="pct">${totalGuards>0?'100%':'0%'}</span></div>
     <div class="stat-box clickable" data-resbox="exams"><div class="n">${DB.exams.length}</div><div class="l">Exam sections</div><span class="pct" style="--pc:var(--blue);">${pctStr(examsAttemptedCount,DB.exams.length)}</span></div>
-    <div class="stat-box clickable" data-resbox="attempts"><div class="n">${DB.attempts.length}</div><div class="l">Total Attend</div><span class="pct" style="--pc:var(--green);">${pctStr(DB.attempts.length,totalGuards*DB.exams.length)}</span></div>
-    <div class="stat-box"><div class="n">${attemptedCount}</div><div class="l">${isAll?'Attend (this month)':'Attend (this exam)'}</div><span class="pct" style="--pc:var(--green);">${pctStr(attemptedCount,totalGuards)}</span></div>
+    <div class="stat-box clickable" data-resbox="attend"><div class="n" style="color:var(--green);">${attSet.size}</div><div class="l">Attend ${scopeTxt}</div><span class="pct" style="--pc:var(--green);">${pctStr(attSet.size,totalGuards)}</span></div>
+    <div class="stat-box clickable" data-resbox="notattend"><div class="n" style="color:var(--red);">${notAttCount}</div><div class="l">Not Attend ${scopeTxt}</div><span class="pct" style="--pc:var(--red);">${pctStr(notAttCount,totalGuards)}</span></div>
+    <div class="stat-box clickable" data-resbox="gpass"><div class="n" style="color:var(--green);">${pf.pass}</div><div class="l">Pass</div><span class="pct" style="--pc:var(--green);">${pctStr(pf.pass,attSet.size)}</span></div>
+    <div class="stat-box clickable" data-resbox="gfail"><div class="n" style="color:var(--red);">${pf.fail}</div><div class="l">Fail</div><span class="pct" style="--pc:var(--red);">${pctStr(pf.fail,attSet.size)}</span></div>
   </div>
   <div class="card">
     <div class="panel-head"><div><h2>Results${isAll?' <span class="chip">All exam types</span>':(selExamObj&&selExamObj.examType?` <span class="chip">${esc(selExamObj.examType)}</span>`:'')}</h2><p>Select a month and exam to view results, or export to Excel.</p></div></div>
@@ -4543,13 +4573,24 @@ function adminResults(){
   </div>`;
 }
 function adminResultsDetail(view){
-  return listDetailHtml(view, {atts:DB.attempts, exams:DB.exams}, (S.resSearchQuery||'').trim().toLowerCase(), S.resSearchQuery||'', '');
+  const months = monthsSorted();
+  const selMonth = S.adminMonthFilter || (months[0] && months[0].id) || '';
+  const exams = selMonth ? examsForMonth(selMonth) : [];
+  const selExam = (S.adminExamFilter && exams.some(e=>e.id===S.adminExamFilter)) ? S.adminExamFilter : RESULTS_ALL;
+  const exList = selExam===RESULTS_ALL ? exams : exams.filter(e=>e.id===selExam);
+  const ids = new Set(exList.map(e=>e.id));
+  const atts = DB.attempts.filter(a=>ids.has(a.examId));
+  const m = monthById(selMonth);
+  const scoped = ['attend','notattend','gpass','gfail'].includes(view);
+  const suffix = scoped ? ((m?m.label:'') + (selExam===RESULTS_ALL ? ' \u00b7 All exam types' : ' \u00b7 ' + (exList[0] ? (exList[0].examType||examLabel(exList[0])) : ''))) : '';
+  return listDetailHtml(view, {atts, exams:DB.exams, exList}, (S.resSearchQuery||'').trim().toLowerCase(), S.resSearchQuery||'', suffix);
 }
 function bindAdminResults(){
   if(S.resView){
     const inp = document.getElementById('mdSearchInput');
     if(inp) inp.addEventListener('input',()=>patch({resSearchQuery:inp.value}));
     document.querySelectorAll('[data-profile]').forEach(el=>el.addEventListener('click',()=>goPush({adminTab:'guardprofile', profileMobile:el.getAttribute('data-profile')})));
+    document.querySelectorAll('[data-examlist]').forEach(el=>el.addEventListener('click',()=>goPush({resView:el.getAttribute('data-examlist'), resSearchQuery:''})));
     return;
   }
   document.querySelectorAll('[data-resbox]').forEach(el=>el.addEventListener('click',()=>goPush({resView:el.getAttribute('data-resbox'), resSearchQuery:''})));
