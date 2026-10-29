@@ -1118,6 +1118,14 @@ thead th{letter-spacing:.09em;}
 .panel-head .icon-del-btn{flex-shrink:0;width:34px;height:34px;}
 .exam-edit-form{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;width:100%;}
 .exam-edit-form .field{margin-bottom:0;}
+
+/* --- dashboard: clickable rows, wider indicator bars, Proper-case titles --- */
+.d-click{cursor:pointer;border-radius:8px;transition:background .15s;}
+.d-click:hover{background:var(--panel-2);}
+.d-hbars-wide .d-hrow{grid-template-columns:var(--lw,8ch) minmax(0,1fr) auto;}
+.d-card-h h3{text-transform:capitalize !important;letter-spacing:.01em !important;font-size:13.5px !important;}
+.d-kpi-l{text-transform:capitalize !important;letter-spacing:.02em !important;}
+@media (max-width:700px){ .d-hbars-wide .d-hrow{grid-template-columns:1fr auto;} }
 </style>
 </head>
 <body>
@@ -1371,14 +1379,24 @@ function pctStr(a,b){ const x=Number(a)||0, y=Number(b)||0; if(y<=0) return '0%'
 
 /* ---- shared "list behind a number" view (Dashboard double-click + Results box click) ---- */
 function listDetailHtml(kind, scope, q, searchVal, suffix){
-  const gMatch = g=> !q || g.name.toLowerCase().includes(q) || String(g.gatePass||'').toLowerCase().includes(q) || g.mobile.includes(q);
+  const gMatch = g=> !q || g.name.toLowerCase().includes(q) || String(g.gatePass||'').toLowerCase().includes(q) || g.mobile.includes(q) || String(g.post||'').toLowerCase().includes(q);
   const attended = new Set(scope.atts.map(a=>a.guardMobile));
+  if(kind.indexOf('q:')===0) return qDetailHtml(kind.slice(2), scope, q, searchVal, suffix);
+  const typeFilter = kind.indexOf('type:')===0 ? kind.slice(5) : null;
+  const SCORE_BANDS = {excellent:['Excellent (80%+)',a=>dashPct(a)>=80], good:['Good (60\u201379%)',a=>dashPct(a)>=60&&dashPct(a)<80], average:['Average (40\u201359%)',a=>dashPct(a)>=40&&dashPct(a)<60], poor:['Needs work (<40%)',a=>dashPct(a)<40]};
+  const scoreBand = kind.indexOf('score:')===0 ? SCORE_BANDS[kind.slice(6)] : null;
   let title, head, rows, mono;
   const guardRows = list => list.filter(gMatch).map((g,i)=>[i+1, `<span class="name-link" data-profile="${esc(g.mobile)}">${esc(g.name)}</span>`, esc(g.gatePass), esc(g.mobile), esc(g.post), fmtRegAt(g.registeredAt)]);
   if(kind==='registered' || kind==='attend' || kind==='notattend'){
     title = kind==='registered' ? 'Registered Security personnel' : (kind==='attend' ? 'Attend (participation)' : 'Not Attend');
     head = ['S.No.','Name','Gate pass','Mobile','Post','Registered on'];
     rows = guardRows(kind==='registered' ? DB.guards : DB.guards.filter(g=> (kind==='attend') === attended.has(g.mobile)));
+    mono = [0,2,3,5];
+  } else if(kind.indexOf('post:')===0){
+    const pp = kind.slice(5);
+    title = 'Guards by post \u2014 ' + pp;
+    head = ['S.No.','Name','Gate pass','Mobile','Post','Registered on'];
+    rows = guardRows(DB.guards.filter(g=>(((g.post||'').trim())||'Not set')===pp));
     mono = [0,2,3,5];
   } else if(kind==='exams' || kind==='locked'){
     title = kind==='exams' ? 'Exam sections' : 'Locked exams';
@@ -1408,11 +1426,13 @@ function listDetailHtml(kind, scope, q, searchVal, suffix){
       .map((r,i)=>[i+1, `<span class="name-link" data-profile="${esc(r.g.mobile)}">${esc(r.g.name)}</span>`, esc(r.g.gatePass), esc(r.g.post), r.m.ach, r.m.tot, pctStr(r.m.ach,r.m.tot), resultBadgeHtml(r.m.ach,r.m.tot)]);
     mono = [0,2,4,5,6];
   } else {
-    title = kind==='avg' ? 'Average score — all attempts' : (kind==='pass' ? 'Pass rate — all attempts' : 'Total Attend');
+    title = scoreBand ? ('Score distribution \u2014 ' + scoreBand[0]) : typeFilter!==null ? ('Exam type \u2014 ' + typeFilter) : kind==='avg' ? 'Average score — all attempts' : (kind==='pass' ? 'Pass rate — all attempts' : 'Total Attend');
     head = ['S.No.','Name','Gate pass','Post','Month','Exam type','Date','Score','%','Result'];
     const list = scope.atts.slice().sort((a,b)=>b.submittedAt-a.submittedAt).filter(a=>{
+      if(scoreBand && !scoreBand[1](a)) return false;
+      if(typeFilter!==null){ const ex0=examById(a.examId); if((((ex0&&ex0.examType)||'Other'))!==typeFilter) return false; }
       if(!q) return true; const g=findGuard(a.guardMobile);
-      return (g&&g.name.toLowerCase().includes(q)) || (g&&String(g.gatePass||'').toLowerCase().includes(q)) || a.guardMobile.includes(q);
+      return (g&&g.name.toLowerCase().includes(q)) || (g&&String(g.gatePass||'').toLowerCase().includes(q)) || (g&&String(g.post||'').toLowerCase().includes(q)) || a.guardMobile.includes(q);
     });
     rows = list.map((a,i)=>{ const g=findGuard(a.guardMobile), ex=examById(a.examId), m=ex&&monthById(ex.monthId), dt=fmtDateTime(a.submittedAt);
       return [i+1, `<span class="name-link" data-profile="${esc(a.guardMobile)}">${esc(g?g.name:a.guardMobile)}</span>`, esc(g?g.gatePass:'-'), esc(g?g.post:'-'), esc(m?m.label:'-'), esc(ex?(ex.examType||examLabel(ex)):'-'), dt.date+' '+dt.time, a.score+'/'+a.total, pctStr(a.score,a.total), resultBadgeHtml(a.score,a.total)]; });
@@ -1420,7 +1440,7 @@ function listDetailHtml(kind, scope, q, searchVal, suffix){
   }
   return `
   <div class="card">
-    <div class="panel-head"><div><h2>${esc(title)} (${rows.length})</h2>${suffix?`<p>${esc(suffix)}</p>`:''}</div></div>
+    <div class="panel-head"><div><h2>${esc(title)} (${rows.length})</h2>${suffix?`<p>${esc(suffix)}</p>`:''}</div>${rows.length?`<button class="btn btn-primary btn-sm" type="button" data-listexport="${esc(title+(suffix?' - '+suffix:''))}">\u2B07 Export to Excel</button>`:''}</div>
     <div class="search-box"><input type="text" id="mdSearchInput" placeholder="Search…" value="${esc(searchVal||'')}"></div>
     ${rows.length===0?emptyState('search','Nothing found','Check the spelling and try again.'):
     `<div class="table-wrap"><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>
@@ -1428,14 +1448,74 @@ function listDetailHtml(kind, scope, q, searchVal, suffix){
     </tbody></table></div>`}
   </div>`;
 }
+/* ---- Dashboard "Toughest questions" -> one question's details ---- */
+function qDetailHtml(qid, scope, q, searchVal, suffix){
+  const qu = DB.questions.find(x=>x.id===qid);
+  if(!qu) return `<div class="card">${emptyState('warn','Question not found','')}</div>`;
+  const ex = examById(qu.examId);
+  const pubs = publishedQuestionsForExam(qu.examId);
+  const idx = pubs.findIndex(x=>x.id===qid);
+  const L = 'ABCDEFGH';
+  const optTxt = o => (o && typeof o==='object') ? (((o.en||'').trim())||((o.hi||'').trim())||(o.img?'[Image]':'-')) : String(o==null?'':o);
+  const opts = Array.isArray(qu.options) ? qu.options : [];
+  const ans = scope.atts.filter(a=>a.examId===qu.examId && Array.isArray(a.answers));
+  const tot = ans.length, ok = ans.filter(a=>a.answers[idx]===qu.correct).length;
+  const acc = tot ? ok/tot*100 : 0;
+  const cnt = opts.map((o,oi)=>ans.filter(a=>a.answers[idx]===oi).length);
+  const optHtml = opts.map((o,oi)=>`<div class="item-row" style="${oi===qu.correct?'border-color:var(--green);':''}"><div class="info"><b>${L.charAt(oi)}. ${esc(optTxt(o))}${oi===qu.correct?' \u2713':''}</b></div><span class="mono">${cnt[oi]} picked</span></div>`).join('');
+  const hit = a=>{ if(!q) return true; const g=findGuard(a.guardMobile);
+    return (g&&g.name.toLowerCase().includes(q)) || (g&&String(g.gatePass||'').toLowerCase().includes(q)) || (g&&String(g.post||'').toLowerCase().includes(q)) || a.guardMobile.includes(q); };
+  const list = ans.filter(hit).slice().sort((a,b)=>{ const wa=a.answers[idx]===qu.correct?1:0, wb=b.answers[idx]===qu.correct?1:0; return wa-wb || b.submittedAt-a.submittedAt; });
+  const rows = list.map((a,i)=>{ const g=findGuard(a.guardMobile), dt=fmtDateTime(a.submittedAt), sel=a.answers[idx], right=sel===qu.correct;
+    return [i+1, `<span class="name-link" data-profile="${esc(a.guardMobile)}">${esc(g?g.name:a.guardMobile)}</span>`, esc(g?g.gatePass:'-'), esc(g?g.post:'-'), (sel===undefined||sel===null)?'Skipped':L.charAt(sel), dt.date+' '+dt.time,
+      right?'<span style="color:var(--green);font-weight:700;">Correct</span>':'<span style="color:var(--red);font-weight:700;">Wrong</span>']; });
+  const head = ['S.No.','Name','Gate pass','Post','Answered','Date','Result'], mono=[0,2,4,5];
+  return `
+  <div class="card">
+    <div class="panel-head"><div><h2>Question details</h2><p>${ex?esc(examLabel(ex)):''}${ex&&ex.examType?' · '+esc(ex.examType):''}${suffix?' · '+esc(suffix):''}</p></div>${rows.length?`<button class="btn btn-primary btn-sm" type="button" data-listexport="Question details - who answered">\u2B07 Export to Excel</button>`:''}</div>
+    <p style="font-size:15px;font-weight:700;margin:4px 0 6px;">${esc(qu.textHi||qu.textEn||'')}</p>
+    ${qu.textEn&&qu.textHi&&qu.textEn!==qu.textHi?`<p style="color:var(--muted);margin:0 0 10px;">${esc(qu.textEn)}</p>`:''}
+    <p class="mono" style="margin:6px 0 12px;">Accuracy ${acc.toFixed(0)}% · ${ok} correct of ${tot} answered</p>
+    ${optHtml}
+    <h3 style="margin:18px 0 8px;font-size:14px;">Who answered (${rows.length})</h3>
+    <div class="search-box"><input type="text" id="mdSearchInput" placeholder="Search…" value="${esc(searchVal||'')}"></div>
+    ${rows.length===0?emptyState('search','Nothing found','Check the spelling and try again.'):
+    `<div class="table-wrap"><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>
+    ${rows.map(r=>`<tr>${r.map((c,i)=>`<td${mono.includes(i)?' class="mono"':''}>${c}</td>`).join('')}</tr>`).join('')}
+    </tbody></table></div>`}
+  </div>`;
+}
+
+/* ---- "Export to Excel" for every opened list (reads the table that is on screen) ---- */
+function exportOpenListToExcel(title){
+  const table = document.querySelector('.table-wrap table');
+  if(!table){ alert('There is no data to export.'); return; }
+  const header = Array.from(table.querySelectorAll('thead th')).map(th=>th.textContent.trim());
+  const dataRows = Array.from(table.querySelectorAll('tbody tr')).map(tr=>Array.from(tr.querySelectorAll('td')).map((td,i)=>{
+    const t = td.textContent.replace(/\s+/g,' ').trim();
+    return (i===0 && /^\d+$/.test(t)) ? Number(t) : t;
+  }));
+  if(!dataRows.length){ alert('There is no data to export.'); return; }
+  const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
+  ws['!cols'] = header.map((h,ci)=>({wch: Math.min(40, Math.max(12, h.length+2, ...dataRows.slice(0,60).map(r=>String(r[ci]==null?'':r[ci]).length+2)))}));
+  try{ styleWorksheetPro(ws); }catch(e){}
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, (title||'List').replace(/[\\\/?*\[\]:]/g,' ').slice(0,28)||'List');
+  downloadWorkbook(wb, (title||'list').replace(/[^a-z0-9]+/gi,'_').replace(/^_|_$/g,'') + '.xlsx');
+}
+function bindListExport(){
+  document.querySelectorAll('[data-listexport]').forEach(b=>b.addEventListener('click',()=>exportOpenListToExcel(b.getAttribute('data-listexport'))));
+}
 function adminDashDetail(){
   const sel = (S.dashMonth && monthById(S.dashMonth)) ? S.dashMonth : '';
-  const exams = sel ? examsForMonth(sel) : DB.exams;
+  const typeSel = S.dashType || '';
+  const exams = (sel ? examsForMonth(sel) : DB.exams).filter(e=>!typeSel || (e.examType||'Other')===typeSel);
   const ids = new Set(exams.map(e=>e.id));
   const atts = DB.attempts.filter(a=>ids.has(a.examId));
-  return listDetailHtml(S.dashView, {atts, exams}, (S.dashSearch||'').trim().toLowerCase(), S.dashSearch||'', sel ? monthById(sel).label : 'All months');
+  return listDetailHtml(S.dashView, {atts, exams}, (S.dashSearch||'').trim().toLowerCase(), S.dashSearch||'', (sel ? monthById(sel).label : 'All months') + (typeSel ? ' \u00b7 ' + typeSel : ' \u00b7 All exam types'));
 }
 function bindDashDetail(){
+  bindListExport();
   const inp = document.getElementById('mdSearchInput');
   if(inp) inp.addEventListener('input',()=>patch({dashSearch:inp.value}));
   document.querySelectorAll('[data-profile]').forEach(el=>el.addEventListener('click',()=>goPush({adminTab:'guardprofile', profileMobile:el.getAttribute('data-profile')})));
@@ -3249,15 +3329,16 @@ function dashDonut(segs, big, small){
   let acc = 0;
   const arcs = segs.filter(s=>s.value>0).map((s,i,arr)=>{
     const p = s.value/total*100, len = Math.max(0.5, p-(arr.length>1?1.4:0));
-    const el = `<circle class="d-seg" cx="21" cy="21" r="15.9155" fill="none" stroke="${s.color}" stroke-width="4.6" stroke-linecap="butt" stroke-dasharray="${len.toFixed(2)} ${(100-len).toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}" style="--i:${i}"><title>${esc(s.label)}: ${s.value}</title></circle>`;
+    const el = `<circle class="d-seg" cx="21" cy="21" r="15.9155" fill="none" stroke="${s.color}" stroke-width="4.6" stroke-linecap="butt" stroke-dasharray="${len.toFixed(2)} ${(100-len).toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}" style="--i:${i}${s.view?';cursor:pointer':''}"${s.view?` data-dview="${esc(s.view)}"`:''}><title>${esc(s.label)}: ${s.value}</title></circle>`;
     acc += p; return el;
   }).join('');
   return `<div class="d-donut"><svg viewBox="0 0 42 42" role="img" aria-label="${esc(small||'chart')}">
       <g transform="rotate(-90 21 21)"><circle cx="21" cy="21" r="15.9155" fill="none" stroke="var(--line)" stroke-width="4.6"/>${arcs}</g></svg>
     <div class="d-donut-c"><b>${big}</b><span>${esc(small||'')}</span></div></div>`;
 }
-function dashHBars(rows){
-  return `<div class="d-hbars">${rows.map((r,i)=>`<div class="d-hrow d-rise" style="--d:${300+i*80}ms">
+function dashHBars(rows, wide){
+  const lw = wide ? Math.min(16, Math.max(3, ...rows.map(r=>String(r.label).length))) + 1 : 0;
+  return `<div class="d-hbars${wide?' d-hbars-wide':''}"${wide?` style="--lw:${lw}ch"`:''}>${rows.map((r,i)=>`<div class="d-hrow d-rise${r.view?' d-click':''}"${r.view?` data-dview="${esc(r.view)}" title="View details"`:''} style="--d:${300+i*80}ms">
     <div class="d-hl" title="${esc(r.label)}">${esc(r.label)}</div>
     <div class="d-htrack"><i class="d-hfill" style="width:${Math.max(2,Math.min(100,r.pct)).toFixed(1)}%;background:${r.color};--i:${i}"></i></div>
     <div class="d-hv">${r.text}</div></div>`).join('')}</div>`;
@@ -3267,7 +3348,10 @@ function adminDashboard(){
   const monthSel = (S.dashMonth && monthById(S.dashMonth)) ? S.dashMonth : '';
   const animate = !!(window.__DASH_NEW || DASH_REPLAY); DASH_REPLAY = false;
   const months = monthsSorted();
-  const exams = monthSel ? examsForMonth(monthSel) : DB.exams;
+  const typeSel = S.dashType || '';
+  const typeOk = e => !typeSel || (e.examType||'Other')===typeSel;
+  const typeList = EXAM_TYPES.concat(Array.from(new Set(DB.exams.map(e=>e.examType||'Other'))).filter(t=>!EXAM_TYPES.includes(t)));
+  const exams = (monthSel ? examsForMonth(monthSel) : DB.exams).filter(typeOk);
   const exIds = new Set(exams.map(e=>e.id));
   const atts = DB.attempts.filter(a=>exIds.has(a.examId));
   const guards = DB.guards;
@@ -3306,7 +3390,7 @@ function adminDashboard(){
 
   /* ---- month-wise average (always every month, last 8) ---- */
   const monthItems = months.slice(-8).map(m=>{
-    const ids = new Set(examsForMonth(m.id).map(e=>e.id));
+    const ids = new Set(examsForMonth(m.id).filter(typeOk).map(e=>e.id));
     const ma = DB.attempts.filter(a=>ids.has(a.examId));
     const st = ma.reduce((s,a)=>s+(a.score||0),0), tt = ma.reduce((s,a)=>s+(a.total||0),0);
     return { label:(MONTH_NAMES[m.monthNum]||m.label).slice(0,3)+' '+String(m.year||'').slice(2), value: tt?st/tt*100:0, n: ma.length, none: !ma.length };
@@ -3314,23 +3398,23 @@ function adminDashboard(){
 
   /* ---- score distribution ---- */
   const buckets = [
-    {label:'Excellent (80%+)', value:atts.filter(a=>dashPct(a)>=80).length, color:DASH_COL.green},
-    {label:'Good (60–79%)', value:atts.filter(a=>dashPct(a)>=60&&dashPct(a)<80).length, color:DASH_COL.blue},
-    {label:'Average (40–59%)', value:atts.filter(a=>dashPct(a)>=40&&dashPct(a)<60).length, color:DASH_COL.amber},
-    {label:'Needs work (<40%)', value:atts.filter(a=>dashPct(a)<40).length, color:DASH_COL.red},
+    {label:'Excellent (80%+)', view:'score:excellent', value:atts.filter(a=>dashPct(a)>=80).length, color:DASH_COL.green},
+    {label:'Good (60–79%)', view:'score:good', value:atts.filter(a=>dashPct(a)>=60&&dashPct(a)<80).length, color:DASH_COL.blue},
+    {label:'Average (40–59%)', view:'score:average', value:atts.filter(a=>dashPct(a)>=40&&dashPct(a)<60).length, color:DASH_COL.amber},
+    {label:'Needs work (<40%)', view:'score:poor', value:atts.filter(a=>dashPct(a)<40).length, color:DASH_COL.red},
   ];
 
   /* ---- exam-type performance ---- */
   const byType = {};
   atts.forEach(a=>{ const ex = examById(a.examId); const t = (ex&&ex.examType)||'Other'; (byType[t] = byType[t]||{s:0,t:0,n:0}); byType[t].s+=a.score||0; byType[t].t+=a.total||0; byType[t].n++; });
-  const typeRows = Object.keys(byType).map(t=>{ const o=byType[t], p=o.t?o.s/o.t*100:0; return {label:t, pct:p, color:dashColorFor(p), text:`${p.toFixed(0)}% <small>· ${o.n}</small>`}; }).sort((a,b)=>b.pct-a.pct);
+  const typeRows = Object.keys(byType).map(t=>{ const o=byType[t], p=o.t?o.s/o.t*100:0; return {label:t, view:'type:'+t, pct:p, color:dashColorFor(p), text:`${p.toFixed(0)}% <small>· ${o.n}</small>`}; }).sort((a,b)=>b.pct-a.pct);
 
   /* ---- guards by post ---- */
   const byPost = {};
   guards.forEach(g=>{ const p=(g.post||'').trim()||'Not set'; byPost[p]=(byPost[p]||0)+1; });
   const postArr = Object.keys(byPost).map(p=>({p,c:byPost[p]})).sort((a,b)=>b.c-a.c).slice(0,6);
   const postMax = Math.max(1,...postArr.map(x=>x.c));
-  const postRows = postArr.map((x,i)=>({label:x.p, pct:x.c/postMax*100, color:[DASH_COL.blue,DASH_COL.violet,DASH_COL.amber,DASH_COL.green,DASH_COL.red,DASH_COL.blue][i], text:`${x.c}`}));
+  const postRows = postArr.map((x,i)=>({label:x.p, view:'post:'+x.p, pct:x.c/postMax*100, color:[DASH_COL.blue,DASH_COL.violet,DASH_COL.amber,DASH_COL.green,DASH_COL.red,DASH_COL.blue][i], text:`${x.c}`}));
 
   /* ---- hardest questions (lowest accuracy) ---- */
   const qStat = {};
@@ -3358,30 +3442,34 @@ function adminDashboard(){
   <div class="dash ${animate?'dash-anim':''}" id="dashRoot">
     <div class="d-head d-rise">
       <div><h2>Dashboard <span class="d-live"><i></i>Live</span></h2>
-        <p>Overview of guards, exams and results${monthSel?` — ${esc(monthById(monthSel).label)}`:' — all months'}.</p></div>
+        <p>Overview of guards, exams and results${monthSel?` — ${esc(monthById(monthSel).label)}`:' — all months'}${typeSel?` — ${esc(typeSel)}`:' — all exam types'}.</p></div>
+      <div class="d-filters" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;">
       <div class="d-filter"><label for="dashMonthSel">Month</label>
         <select id="dashMonthSel"><option value="">All months</option>${months.slice().reverse().map(m=>`<option value="${m.id}" ${m.id===monthSel?'selected':''}>${esc(m.label)}</option>`).join('')}</select></div>
+      <div class="d-filter"><label for="dashTypeSel">Exam type</label>
+        <select id="dashTypeSel"><option value="">All Exam types</option>${typeList.map(t=>`<option value="${esc(t)}" ${t===typeSel?'selected':''}>${esc(t)}</option>`).join('')}</select></div>
+      </div>
     </div>
     <div class="d-kpis">${kpis}</div>
     <div class="d-grid">
       ${card('c6','Attend trend',`Per day · last 14 days${atts.length?` · <b>${last14}</b> in 14 days · <b>${bestDay}</b> best day`:''}`,
         atts.length ? dashAreaChart(dayVals,dayLabels) : dashEmpty('No Attend yet'), 350)}
       ${card('c3','Score distribution','How guards performed',
-        atts.length ? `${dashDonut(buckets, atts.length, 'Attend')}<div class="d-legend">${buckets.map(b=>`<span><i style="background:${b.color}"></i>${b.label}<b>${b.value}</b></span>`).join('')}</div>` : dashEmpty('No Attend yet'), 420)}
+        atts.length ? `${dashDonut(buckets, atts.length, 'Attend')}<div class="d-legend">${buckets.map(b=>`<span class="d-click" data-dview="${b.view}" title="View details" style="cursor:pointer"><i style="background:${b.color}"></i>${b.label}<b>${b.value}</b></span>`).join('')}</div>` : dashEmpty('No Attend yet'), 420)}
       ${card('c3','Participation','Guards who Attend at least one exam',
-        nG ? `${dashDonut([{label:'Attend',value:attemptedGuards.size,color:DASH_COL.green},{label:'Not Attend',value:Math.max(0,nG-attemptedGuards.size),color:DASH_COL.amber}], partPct.toFixed(0)+'%', 'participation')}<div class="d-legend"><span><i style="background:${DASH_COL.green}"></i>Attend<b>${attemptedGuards.size}</b></span><span><i style="background:${DASH_COL.amber}"></i>Not Attend<b>${Math.max(0,nG-attemptedGuards.size)}</b></span></div>` : dashEmpty('No guards registered yet'), 490)}
+        nG ? `${dashDonut([{label:'Attend',view:'attend',value:attemptedGuards.size,color:DASH_COL.green},{label:'Not Attend',view:'notattend',value:Math.max(0,nG-attemptedGuards.size),color:DASH_COL.amber}], partPct.toFixed(0)+'%', 'participation')}<div class="d-legend"><span class="d-click" data-dview="attend" title="View details" style="cursor:pointer"><i style="background:${DASH_COL.green}"></i>Attend<b>${attemptedGuards.size}</b></span><span class="d-click" data-dview="notattend" title="View details" style="cursor:pointer"><i style="background:${DASH_COL.amber}"></i>Not Attend<b>${Math.max(0,nG-attemptedGuards.size)}</b></span></div>` : dashEmpty('No guards registered yet'), 490)}
       ${card('c4','Month-wise average score','Average % · last 8 months',
         monthItems.length ? dashColumns(monthItems) : dashEmpty('No months added yet'), 560)}
       ${card('c4','Exam type performance','Average score by exam type',
-        typeRows.length ? dashHBars(typeRows) : dashEmpty('No Attend yet'), 630)}
+        typeRows.length ? dashHBars(typeRows, true) : dashEmpty('No Attend yet'), 630)}
       ${card('c4','Guards by post','Registered Security personnel per post',
-        postRows.length ? dashHBars(postRows) : dashEmpty('No guards registered yet'), 700)}
+        postRows.length ? dashHBars(postRows, true) : dashEmpty('No guards registered yet'), 700)}
       ${card('c4','Toughest questions','Lowest accuracy first',
-        hardest.length ? dashHBars(hardest.map(h=>({label:dashShort(h.q.textEn||h.q.textHi,48)+(h.ex&&h.ex.examType?`  ·  ${h.ex.examType}`:''), pct:h.acc, color:dashColorFor(h.acc), text:`${h.acc.toFixed(0)}% <small>· ${h.tot}</small>`}))) : dashEmpty('No answered questions yet'), 770)}
+        hardest.length ? dashHBars(hardest.map(h=>({label:dashShort(h.q.textEn||h.q.textHi,48)+(h.ex&&h.ex.examType?`  ·  ${h.ex.examType}`:''), view:'q:'+h.q.id, pct:h.acc, color:dashColorFor(h.acc), text:`${h.acc.toFixed(0)}% <small>· ${h.tot}</small>`}))) : dashEmpty('No answered questions yet'), 770)}
       ${card('c4','Top performers','Top 3 · highest overall score %',
-        top.length ? `<div class="d-list">${top.map((t,i)=>`<div class="d-li d-rise" style="--d:${850+i*80}ms"><span class="d-rank r${i+1}">${i+1}</span><div class="d-li-b"><b>${esc(t.name)}</b><small>${esc(t.post||'')} · ${t.n} exam${t.n===1?'':'s'}</small></div><span class="d-pill" style="--c:${dashColorFor(t.pct)}">${t.pct.toFixed(0)}%</span></div>`).join('')}</div>` : dashEmpty('No results yet'), 840)}
+        top.length ? `<div class="d-list">${top.map((t,i)=>`<div class="d-li d-rise d-click" data-profile="${esc(t.m)}" title="View details" style="--d:${850+i*80}ms"><span class="d-rank r${i+1}">${i+1}</span><div class="d-li-b"><b>${esc(t.name)}</b><small>${esc(t.post||'')} · ${t.n} exam${t.n===1?'':'s'}</small></div><span class="d-pill" style="--c:${dashColorFor(t.pct)}">${t.pct.toFixed(0)}%</span></div>`).join('')}</div>` : dashEmpty('No results yet'), 840)}
       ${card('c4','Recent activity','Latest 3 submitted exams',
-        recent.length ? `<div class="d-list">${recent.map((a,i)=>{ const g=findGuard(a.guardMobile), ex=examById(a.examId), p=dashPct(a); return `<div class="d-li d-rise" style="--d:${900+i*80}ms"><span class="d-avatar">${esc((g&&g.name?g.name:'?').trim().charAt(0).toUpperCase())}</span><div class="d-li-b"><b>${esc(g?g.name:a.guardMobile)}</b><small>${esc(ex?(ex.examType||examLabel(ex)):'-')} · ${dashAgo(a.submittedAt)}</small></div><span class="d-score">${a.score}/${a.total}</span><span class="d-pill" style="--c:${dashColorFor(p)}">${p.toFixed(0)}%</span></div>`; }).join('')}</div>` : dashEmpty('No activity yet'), 910)}
+        recent.length ? `<div class="d-list">${recent.map((a,i)=>{ const g=findGuard(a.guardMobile), ex=examById(a.examId), p=dashPct(a); return `<div class="d-li d-rise d-click" data-profile="${esc(a.guardMobile)}" title="View details" style="--d:${900+i*80}ms"><span class="d-avatar">${esc((g&&g.name?g.name:'?').trim().charAt(0).toUpperCase())}</span><div class="d-li-b"><b>${esc(g?g.name:a.guardMobile)}</b><small>${esc(ex?(ex.examType||examLabel(ex)):'-')} · ${dashAgo(a.submittedAt)}</small></div><span class="d-score">${a.score}/${a.total}</span><span class="d-pill" style="--c:${dashColorFor(p)}">${p.toFixed(0)}%</span></div>`; }).join('')}</div>` : dashEmpty('No activity yet'), 910)}
     </div>
   </div>`;
 }
@@ -3389,11 +3477,15 @@ function bindAdminDashboard_(){
   const root = document.getElementById('dashRoot'); if(!root) return;
   const sel = document.getElementById('dashMonthSel');
   if(sel) sel.addEventListener('change',()=>{ DASH_REPLAY = true; patch({dashMonth: sel.value}); });
+  const tsel = document.getElementById('dashTypeSel');
+  if(tsel) tsel.addEventListener('change',()=>{ DASH_REPLAY = true; patch({dashType: tsel.value}); });
   root.querySelectorAll('.d-kpi[data-dashbox]').forEach(el=>el.addEventListener('click',()=>{
     const k = el.getAttribute('data-dashbox'), now = Date.now();
     if(LAST_KPI_TAP.k===k && now-LAST_KPI_TAP.t<450){ LAST_KPI_TAP = {k:'', t:0}; goPush({dashView:k, dashSearch:''}); }
     else LAST_KPI_TAP = {k, t:now};
   }));
+  root.querySelectorAll('[data-dview]').forEach(el=>el.addEventListener('click',()=>goPush({dashView:el.getAttribute('data-dview'), dashSearch:''})));
+  root.querySelectorAll('.d-li[data-profile]').forEach(el=>el.addEventListener('click',()=>goPush({adminTab:'guardprofile', profileMobile:el.getAttribute('data-profile')})));
   if(!root.classList.contains('dash-anim')) return;
   if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   /* count-up for every headline number */
@@ -4576,7 +4668,7 @@ function adminResults(){
   const rq = (S.resultsSearchQuery||'').trim().toLowerCase();
   const attempts = rq ? allAttempts.filter(a=>{
     const g = findGuard(a.guardMobile);
-    return (g&&g.name&&g.name.toLowerCase().includes(rq)) || (g&&g.gatePass&&g.gatePass.toLowerCase().includes(rq)) || a.guardMobile.includes(rq);
+    return (g&&g.name&&g.name.toLowerCase().includes(rq)) || (g&&g.gatePass&&g.gatePass.toLowerCase().includes(rq)) || (g&&g.post&&String(g.post).toLowerCase().includes(rq)) || a.guardMobile.includes(rq);
   }) : allAttempts;
   const selExamObj = !isAll ? examById(selExam) : null;
   const totalGuards = DB.guards.length;
@@ -4608,7 +4700,7 @@ function adminResults(){
     </div>
     ${selMonth&&exams.length?`<div style="display:flex;justify-content:flex-end;margin-bottom:12px;"><button class="btn btn-primary btn-sm" id="exportBtn" data-exam="${esc(selExam)}" data-month="${esc(selMonth)}">⬇ Export to Excel</button></div>`:''}
     ${allAttempts.length===0?emptyState('chart',isAll?'No Attend for this month yet':'No Attend for this exam yet','Results will appear here once guards attempt it.'):`
-    <div class="search-box"><input type="text" id="resultsSearchInput" placeholder="Search by name or gate pass…" value="${esc(S.resultsSearchQuery||'')}"></div>
+    <div class="search-box"><input type="text" id="resultsSearchInput" placeholder="Search by name, gate pass or post…" value="${esc(S.resultsSearchQuery||'')}"></div>
     ${attempts.length===0?emptyState('search','No guard found','Check the spelling and try again.'):
     `<div class="table-wrap"><table><thead><tr><th>S.No.</th><th>Name</th><th>Gate pass</th><th>Post</th>${isAll?'<th>Exam type</th>':''}<th>Date</th><th>Score</th><th>Passing</th><th>Result</th><th></th></tr></thead><tbody>
       ${attempts.map((a,idx)=>{
@@ -4635,6 +4727,7 @@ function adminResultsDetail(view){
 }
 function bindAdminResults(){
   if(S.resView){
+    bindListExport();
     const inp = document.getElementById('mdSearchInput');
     if(inp) inp.addEventListener('input',()=>patch({resSearchQuery:inp.value}));
     document.querySelectorAll('[data-profile]').forEach(el=>el.addEventListener('click',()=>goPush({adminTab:'guardprofile', profileMobile:el.getAttribute('data-profile')})));
@@ -4922,11 +5015,11 @@ function adminMasterData(){
    full profile, same as clicking a name anywhere else in the app. */
 function adminMasterDataGuardSearch(){
   const q = (S.guardSearchQuery||'').trim().toLowerCase();
-  const results = q ? DB.guards.filter(g=> g.gatePass.toLowerCase().includes(q) || g.name.toLowerCase().includes(q) || g.mobile.includes(q)) : [];
+  const results = q ? DB.guards.filter(g=> g.gatePass.toLowerCase().includes(q) || g.name.toLowerCase().includes(q) || g.mobile.includes(q) || String(g.post||'').toLowerCase().includes(q)) : [];
   return `
   <div class="card" style="margin-bottom:16px;">
     <div class="panel-head"><div><h2>Search security person</h2><p>Search by name, gate pass number, or mobile number.</p></div></div>
-    <div class="search-box"><input type="text" id="guardSearchInput" placeholder="e.g. GP-1042 or guard name" value="${esc(S.guardSearchQuery||'')}"></div>
+    <div class="search-box"><input type="text" id="guardSearchInput" placeholder="Name, gate pass, mobile or post (SG, CO, SS, SO)" value="${esc(S.guardSearchQuery||'')}"></div>
     ${!q?'':results.length===0?emptyState('search','No guard found','Check the spelling and try again.'):
     results.map(g=>{
       const atts = allAttemptsForGuard(g.mobile);
@@ -4953,12 +5046,12 @@ function adminMasterDataDetail(view){
     rows = (view==='attend'?attend:notAttend).map(g=>({g, missed: showMissed?missedExamTypesFor(g.mobile, examsToCheck):[]}));
   }
   const q = (S.mdSearchQuery||'').trim().toLowerCase();
-  const filteredRows = q ? rows.filter(r=> r.g.name.toLowerCase().includes(q) || r.g.gatePass.toLowerCase().includes(q) || r.g.mobile.includes(q)) : rows;
+  const filteredRows = q ? rows.filter(r=> r.g.name.toLowerCase().includes(q) || r.g.gatePass.toLowerCase().includes(q) || r.g.mobile.includes(q) || String(r.g.post||'').toLowerCase().includes(q)) : rows;
   return `
   <div class="card">
     <div class="panel-head"><div><h2>${esc(title)} (${rows.length})</h2></div></div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px;"><button class="btn btn-primary btn-sm" id="mdExportBtn">⬇ Export to Excel</button></div>
-    <div class="search-box"><input type="text" id="mdSearchInput" placeholder="Search by name, gate pass or mobile…" value="${esc(S.mdSearchQuery||'')}"></div>
+    <div class="search-box"><input type="text" id="mdSearchInput" placeholder="Search by name, gate pass, mobile or post…" value="${esc(S.mdSearchQuery||'')}"></div>
     ${filteredRows.length===0?emptyState('search','No security person found','Check the spelling and try again.'):
     `<div class="table-wrap"><table><thead><tr>${showRank?'<th>Rank</th>':'<th>S.No.</th>'}<th>Name</th><th>Gate pass</th><th>Mobile</th><th>Post</th>${view==='registered'?'<th>Registered on</th>':''}${showRank?'<th>Marks</th><th>Passing</th><th>Percentage</th><th>Result</th>':''}${showMissed?'<th>Missed Exams</th>':''}</tr></thead><tbody>
     ${filteredRows.map((r,idx)=>{
