@@ -1126,6 +1126,14 @@ thead th{letter-spacing:.09em;}
 .d-card-h h3{text-transform:capitalize !important;letter-spacing:.01em !important;font-size:13.5px !important;}
 .d-kpi-l{text-transform:capitalize !important;letter-spacing:.02em !important;}
 @media (max-width:700px){ .d-hbars-wide .d-hrow{grid-template-columns:1fr auto;} }
+/* ---- small sort arrows (↑↓) on every list's column titles ---- */
+th.th-sortable{cursor:pointer;user-select:none;-webkit-user-select:none;}
+th.th-sortable:hover{color:var(--text,#fff);}
+.sortk{display:inline-flex;gap:0;margin-left:5px;font-size:9px;line-height:1;vertical-align:middle;letter-spacing:0;font-weight:700;}
+.sortk i{font-style:normal;opacity:.38;transition:opacity .15s,color .15s;}
+.sortk i+i{margin-left:-1px;}
+th.th-sortable:hover .sortk i{opacity:.65;}
+.sortk i.on{opacity:1;color:var(--amber,#F0A93B);}
 </style>
 </head>
 <body>
@@ -1139,7 +1147,9 @@ thead th{letter-spacing:.09em;}
    localStorage — that's just this browser's login state.
    ========================================================= */
 
-const POSTS = ["SO","SS","SG","CO"];
+const POSTS = ["SO","SS","SG","FSG","CO"];
+/* full forms: shown ONLY in the registration dropdown; everywhere else (admin panel, lists) only the short form is stored/shown */
+const POST_FULL = {SO:"Security Officer", SS:"Security Supervisor", SG:"Male Security Guard", FSG:"Female Security Guard", CO:"Computer Operator"};
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const EXAM_TYPES = ["Pre SOP","Post SOP","Pre Psara","Post Psara","Pre OJT","Post OJT","Human rights","Other"];
 
@@ -1377,6 +1387,11 @@ function fmtDateTime(ts){
 function fmtRegAt(ts){ if(!ts) return '-'; const d=fmtDateTime(ts); return d.date+', '+d.time; }
 function pctStr(a,b){ const x=Number(a)||0, y=Number(b)||0; if(y<=0) return '0%'; const v=Math.min(100,x/y*100); return (Math.round(v*10)/10).toFixed(1).replace(/\.0$/,'')+'%'; }
 
+/* recency helpers: newest registered / most recently attended person first */
+function recRegTs(g){ return Number(new Date(g.registeredAt))||0; }
+function recLastAtt(mobile, list){ let mx=0; for(const a of list){ if(a.guardMobile===mobile){ const t=Number(a.submittedAt)||0; if(t>mx) mx=t; } } return mx; }
+function recByReg(list){ return list.slice().sort((x,y)=>recRegTs(y)-recRegTs(x)); }
+function recByAtt(list, atts){ return list.slice().sort((x,y)=>recLastAtt(y.mobile,atts)-recLastAtt(x.mobile,atts) || recRegTs(y)-recRegTs(x)); }
 /* ---- shared "list behind a number" view (Dashboard double-click + Results box click) ---- */
 function listDetailHtml(kind, scope, q, searchVal, suffix){
   const gMatch = g=> !q || g.name.toLowerCase().includes(q) || String(g.gatePass||'').toLowerCase().includes(q) || g.mobile.includes(q) || String(g.post||'').toLowerCase().includes(q);
@@ -1386,17 +1401,20 @@ function listDetailHtml(kind, scope, q, searchVal, suffix){
   const SCORE_BANDS = {excellent:['Excellent (80%+)',a=>dashPct(a)>=80], good:['Good (60\u201379%)',a=>dashPct(a)>=60&&dashPct(a)<80], average:['Average (40\u201359%)',a=>dashPct(a)>=40&&dashPct(a)<60], poor:['Needs work (<40%)',a=>dashPct(a)<40]};
   const scoreBand = kind.indexOf('score:')===0 ? SCORE_BANDS[kind.slice(6)] : null;
   let title, head, rows, mono;
-  const guardRows = list => list.filter(gMatch).map((g,i)=>[i+1, `<span class="name-link" data-profile="${esc(g.mobile)}">${esc(g.name)}</span>`, esc(g.gatePass), esc(g.mobile), esc(g.post), fmtRegAt(g.registeredAt)]);
+  const guardRows = (list, attsForDate) => list.filter(gMatch).map((g,i)=>[i+1, `<span class="name-link" data-profile="${esc(g.mobile)}">${esc(g.name)}</span>`, esc(g.gatePass), esc(g.mobile), esc(g.post), fmtRegAt(g.registeredAt)].concat(attsForDate ? [fmtRegAt(recLastAtt(g.mobile, attsForDate))] : []));
   if(kind==='registered' || kind==='attend' || kind==='notattend'){
     title = kind==='registered' ? 'Registered Security personnel' : (kind==='attend' ? 'Attend (participation)' : 'Not Attend');
-    head = ['S.No.','Name','Gate pass','Mobile','Post','Registered on'];
-    rows = guardRows(kind==='registered' ? DB.guards : DB.guards.filter(g=> (kind==='attend') === attended.has(g.mobile)));
-    mono = [0,2,3,5];
+    head = ['S.No.','Name','Gate pass','Mobile','Designation','Registered on'];
+    if(kind==='attend') head.push('Last attended on');
+    rows = guardRows(kind==='registered' ? recByReg(DB.guards)
+      : kind==='attend' ? recByAtt(DB.guards.filter(g=>attended.has(g.mobile)), scope.atts)
+      : recByReg(DB.guards.filter(g=>!attended.has(g.mobile))), kind==='attend' ? scope.atts : null);
+    mono = kind==='attend' ? [0,2,3,5,6] : [0,2,3,5];
   } else if(kind.indexOf('post:')===0){
     const pp = kind.slice(5);
-    title = 'Guards by post \u2014 ' + pp;
-    head = ['S.No.','Name','Gate pass','Mobile','Post','Registered on'];
-    rows = guardRows(DB.guards.filter(g=>(((g.post||'').trim())||'Not set')===pp));
+    title = 'Guards by designation \u2014 ' + pp;
+    head = ['S.No.','Name','Gate pass','Mobile','Designation','Registered on'];
+    rows = guardRows(recByReg(DB.guards.filter(g=>(((g.post||'').trim())||'Not set')===pp)));
     mono = [0,2,3,5];
   } else if(kind==='exams' || kind==='locked'){
     title = kind==='exams' ? 'Exam sections' : 'Locked exams';
@@ -1413,21 +1431,22 @@ function listDetailHtml(kind, scope, q, searchVal, suffix){
     const t = kind.slice(0,2), id = kind.slice(3), ex = examById(id);
     const set = new Set(DB.attempts.filter(a=>a.examId===id).map(a=>a.guardMobile));
     title = (t==='ea'?'Attend':'Not Attend') + (ex ? ' \u2014 ' + (((ex.nameEn||'').trim()||examLabel(ex)) + ' (' + (ex.examType||'-') + ')') : '');
-    head = ['S.No.','Name','Gate pass','Mobile','Post','Registered on'];
-    rows = guardRows(DB.guards.filter(g=> (t==='ea') === set.has(g.mobile)));
-    mono = [0,2,3,5];
+    head = ['S.No.','Name','Gate pass','Mobile','Designation','Registered on'];
+    if(t==='ea') head.push('Attended on');
+    { const exAtts = DB.attempts.filter(a=>a.examId===id); const gl = DB.guards.filter(g=> (t==='ea') === set.has(g.mobile)); rows = guardRows(t==='ea' ? recByAtt(gl, exAtts) : recByReg(gl), t==='ea' ? exAtts : null); }
+    mono = t==='ea' ? [0,2,3,5,6] : [0,2,3,5];
   } else if(kind==='gpass' || kind==='gfail'){
     title = kind==='gpass' ? 'Pass' : 'Fail';
-    head = ['S.No.','Name','Gate pass','Post','Achieved','Total','%','Result'];
+    head = ['S.No.','Name','Gate pass','Designation','Achieved','Total','%','Result'];
     const exl = scope.exList || [];
     rows = DB.guards.filter(g=>attended.has(g.mobile) && gMatch(g)).map(g=>({g, m:guardMarksIn(g.mobile, exl)}))
       .filter(r=>r.m.tot>0 && (isPassed(r.m.ach,r.m.tot) === (kind==='gpass')))
-      .sort((a,b)=>b.m.ach/b.m.tot - a.m.ach/a.m.tot)
+      .sort((a,b)=>recLastAtt(b.g.mobile,scope.atts)-recLastAtt(a.g.mobile,scope.atts) || recRegTs(b.g)-recRegTs(a.g))
       .map((r,i)=>[i+1, `<span class="name-link" data-profile="${esc(r.g.mobile)}">${esc(r.g.name)}</span>`, esc(r.g.gatePass), esc(r.g.post), r.m.ach, r.m.tot, pctStr(r.m.ach,r.m.tot), resultBadgeHtml(r.m.ach,r.m.tot)]);
     mono = [0,2,4,5,6];
   } else {
     title = scoreBand ? ('Score distribution \u2014 ' + scoreBand[0]) : typeFilter!==null ? ('Exam type \u2014 ' + typeFilter) : kind==='avg' ? 'Average score — all attempts' : (kind==='pass' ? 'Pass rate — all attempts' : 'Total Attend');
-    head = ['S.No.','Name','Gate pass','Post','Month','Exam type','Date','Score','%','Result'];
+    head = ['S.No.','Name','Gate pass','Designation','Month','Exam type','Date','Score','%','Result'];
     const list = scope.atts.slice().sort((a,b)=>b.submittedAt-a.submittedAt).filter(a=>{
       if(scoreBand && !scoreBand[1](a)) return false;
       if(typeFilter!==null){ const ex0=examById(a.examId); if((((ex0&&ex0.examType)||'Other'))!==typeFilter) return false; }
@@ -1469,7 +1488,7 @@ function qDetailHtml(qid, scope, q, searchVal, suffix){
   const rows = list.map((a,i)=>{ const g=findGuard(a.guardMobile), dt=fmtDateTime(a.submittedAt), sel=a.answers[idx], right=sel===qu.correct;
     return [i+1, `<span class="name-link" data-profile="${esc(a.guardMobile)}">${esc(g?g.name:a.guardMobile)}</span>`, esc(g?g.gatePass:'-'), esc(g?g.post:'-'), (sel===undefined||sel===null)?'Skipped':L.charAt(sel), dt.date+' '+dt.time,
       right?'<span style="color:var(--green);font-weight:700;">Correct</span>':'<span style="color:var(--red);font-weight:700;">Wrong</span>']; });
-  const head = ['S.No.','Name','Gate pass','Post','Answered','Date','Result'], mono=[0,2,4,5];
+  const head = ['S.No.','Name','Gate pass','Designation','Answered','Date','Result'], mono=[0,2,4,5];
   return `
   <div class="card">
     <div class="panel-head"><div><h2>Question details</h2><p>${ex?esc(examLabel(ex)):''}${ex&&ex.examType?' · '+esc(ex.examType):''}${suffix?' · '+esc(suffix):''}</p></div>${rows.length?`<button class="btn btn-primary btn-sm" type="button" data-listexport="Question details - who answered">\u2B07 Export to Excel</button>`:''}</div>
@@ -1512,7 +1531,7 @@ function adminDashDetail(){
   const exams = (sel ? examsForMonth(sel) : DB.exams).filter(e=>!typeSel || (e.examType||'Other')===typeSel);
   const ids = new Set(exams.map(e=>e.id));
   const atts = DB.attempts.filter(a=>ids.has(a.examId));
-  return listDetailHtml(S.dashView, {atts, exams}, (S.dashSearch||'').trim().toLowerCase(), S.dashSearch||'', (sel ? monthById(sel).label : 'All months') + (typeSel ? ' \u00b7 ' + typeSel : ' \u00b7 All exam types'));
+  return listDetailHtml(S.dashView, {atts, exams, recentFirst:true}, (S.dashSearch||'').trim().toLowerCase(), S.dashSearch||'', (sel ? monthById(sel).label : 'All months') + (typeSel ? ' \u00b7 ' + typeSel : ' \u00b7 All exam types'));
 }
 function bindDashDetail(){
   bindListExport();
@@ -2403,7 +2422,7 @@ function footerHtml(){
     <div class="wrap footer-inner">
       <div class="footer-brand">
         <div class="footer-brand-row">${brandIconHtml('footer-brand-icon')}<b>${org}</b></div>
-        <p>Monthly security assessments for control-room staff.</p>
+        <p>The monthly security examination is conducted by the Vedanta Security Control Room.</p>
       </div>
       <div class="footer-contact">
         <span class="footer-heading">Contact</span>
@@ -2634,7 +2653,7 @@ function screenGuardAuth(){
           <div class="field"><label>Gate pass number</label><input type="text" name="gatePass" placeholder="8 to 10 digit gate pass number" inputmode="numeric" maxlength="10" minlength="8" pattern="[0-9]{8,10}" autocomplete="off" required></div>
         </div>
         <div class="field"><label>Designation</label>
-          <select name="post" required><option value="">Select Designation</option>${POSTS.map(p=>`<option value="${p}">${p}</option>`).join('')}</select>
+          <select name="post" required><option value="">Select Designation</option>${POSTS.map(p=>`<option value="${p}">${p} (${POST_FULL[p]})</option>`).join('')}</select>
         </div>
         <div class="field-row">
           <div class="field"><label>Set a 4-digit PIN</label><div class="pw-wrap"><input type="password" name="pin" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" placeholder="••••" required><button type="button" class="pw-eye" data-pwtoggle>${icon('eye',17)}</button></div></div>
@@ -3462,7 +3481,7 @@ function adminDashboard(){
         monthItems.length ? dashColumns(monthItems) : dashEmpty('No months added yet'), 560)}
       ${card('c4','Exam type performance','Average score by exam type',
         typeRows.length ? dashHBars(typeRows, true) : dashEmpty('No Attend yet'), 630)}
-      ${card('c4','Guards by post','Registered Security personnel per post',
+      ${card('c4','Guards by designation','Registered Security personnel per designation',
         postRows.length ? dashHBars(postRows, true) : dashEmpty('No guards registered yet'), 700)}
       ${card('c4','Toughest questions','Lowest accuracy first',
         hardest.length ? dashHBars(hardest.map(h=>({label:dashShort(h.q.textEn||h.q.textHi,48)+(h.ex&&h.ex.examType?`  ·  ${h.ex.examType}`:''), view:'q:'+h.q.id, pct:h.acc, color:dashColorFor(h.acc), text:`${h.acc.toFixed(0)}% <small>· ${h.tot}</small>`}))) : dashEmpty('No answered questions yet'), 770)}
@@ -4664,7 +4683,7 @@ function adminResults(){
   const monthExamIds = new Set(exams.map(e=>e.id));
   const allAttempts = !selMonth ? [] : (isAll
     ? DB.attempts.filter(a=>monthExamIds.has(a.examId))
-    : DB.attempts.filter(a=>a.examId===selExam)).sort((a,b)=>a.submittedAt-b.submittedAt);
+    : DB.attempts.filter(a=>a.examId===selExam)).sort((a,b)=>(Number(b.submittedAt)||0)-(Number(a.submittedAt)||0));
   const rq = (S.resultsSearchQuery||'').trim().toLowerCase();
   const attempts = rq ? allAttempts.filter(a=>{
     const g = findGuard(a.guardMobile);
@@ -4700,9 +4719,9 @@ function adminResults(){
     </div>
     ${selMonth&&exams.length?`<div style="display:flex;justify-content:flex-end;margin-bottom:12px;"><button class="btn btn-primary btn-sm" id="exportBtn" data-exam="${esc(selExam)}" data-month="${esc(selMonth)}">⬇ Export to Excel</button></div>`:''}
     ${allAttempts.length===0?emptyState('chart',isAll?'No Attend for this month yet':'No Attend for this exam yet','Results will appear here once guards attempt it.'):`
-    <div class="search-box"><input type="text" id="resultsSearchInput" placeholder="Search by name, gate pass or post…" value="${esc(S.resultsSearchQuery||'')}"></div>
+    <div class="search-box"><input type="text" id="resultsSearchInput" placeholder="Search by name, gate pass or designation…" value="${esc(S.resultsSearchQuery||'')}"></div>
     ${attempts.length===0?emptyState('search','No guard found','Check the spelling and try again.'):
-    `<div class="table-wrap"><table><thead><tr><th>S.No.</th><th>Name</th><th>Gate pass</th><th>Post</th>${isAll?'<th>Exam type</th>':''}<th>Date</th><th>Score</th><th>Passing</th><th>Result</th><th></th></tr></thead><tbody>
+    `<div class="table-wrap"><table><thead><tr><th>S.No.</th><th>Name</th><th>Gate pass</th><th>Designation</th>${isAll?'<th>Exam type</th>':''}<th>Date</th><th>Score</th><th>Passing</th><th>Result</th><th></th></tr></thead><tbody>
       ${attempts.map((a,idx)=>{
         const g = findGuard(a.guardMobile); const dt = fmtDateTime(a.submittedAt);
         const exOfAtt = isAll ? examById(a.examId) : null;
@@ -4723,7 +4742,7 @@ function adminResultsDetail(view){
   const m = monthById(selMonth);
   const scoped = ['attend','notattend','gpass','gfail'].includes(view);
   const suffix = scoped ? ((m?m.label:'') + (selExam===RESULTS_ALL ? ' \u00b7 All exam types' : ' \u00b7 ' + (exList[0] ? (exList[0].examType||examLabel(exList[0])) : ''))) : '';
-  return listDetailHtml(view, {atts, exams:DB.exams, exList}, (S.resSearchQuery||'').trim().toLowerCase(), S.resSearchQuery||'', suffix);
+  return listDetailHtml(view, {atts, exams:DB.exams, exList, recentFirst:true}, (S.resSearchQuery||'').trim().toLowerCase(), S.resSearchQuery||'', suffix);
 }
 function bindAdminResults(){
   if(S.resView){
@@ -4838,7 +4857,7 @@ function exportExamExcel(examId, monthId, typeFilter){
     usedNames.add(out.toLowerCase());
     return out;
   };
-  const summaryHeader = ['Sr. No.','Date','Time','Name','Gate Pass Number','Post','Mobile','Exam Type','Total Marks','Achieved Marks','Passing Marks','Result'];
+  const summaryHeader = ['Sr. No.','Date','Time','Name','Gate Pass Number','Designation','Mobile','Exam Type','Total Marks','Achieved Marks','Passing Marks','Result'];
   const summaryItems = [];
   const sheets = [];
   exList.forEach(ex=>{
@@ -5019,7 +5038,7 @@ function adminMasterDataGuardSearch(){
   return `
   <div class="card" style="margin-bottom:16px;">
     <div class="panel-head"><div><h2>Search security person</h2><p>Search by name, gate pass number, or mobile number.</p></div></div>
-    <div class="search-box"><input type="text" id="guardSearchInput" placeholder="Name, gate pass, mobile or post (SG, CO, SS, SO)" value="${esc(S.guardSearchQuery||'')}"></div>
+    <div class="search-box"><input type="text" id="guardSearchInput" placeholder="Name, gate pass, mobile or designation (SG, FSG, CO, SS, SO)" value="${esc(S.guardSearchQuery||'')}"></div>
     ${!q?'':results.length===0?emptyState('search','No guard found','Check the spelling and try again.'):
     results.map(g=>{
       const atts = allAttemptsForGuard(g.mobile);
@@ -5043,7 +5062,8 @@ function adminMasterDataDetail(view){
     title = view==='attend' ? 'Attend' : 'Not Attend';
     showMissed = view==='notattend';
     if(showMissed) examsToCheck = masterDataExamsToCheck().examsToCheck;
-    rows = (view==='attend'?attend:notAttend).map(g=>({g, missed: showMissed?missedExamTypesFor(g.mobile, examsToCheck):[]}));
+    const mdList = view==='attend' ? recByAtt(attend, DB.attempts) : recByReg(notAttend);
+    rows = mdList.map(g=>({g, missed: showMissed?missedExamTypesFor(g.mobile, examsToCheck):[]}));
   }
   const q = (S.mdSearchQuery||'').trim().toLowerCase();
   const filteredRows = q ? rows.filter(r=> r.g.name.toLowerCase().includes(q) || r.g.gatePass.toLowerCase().includes(q) || r.g.mobile.includes(q) || String(r.g.post||'').toLowerCase().includes(q)) : rows;
@@ -5051,9 +5071,9 @@ function adminMasterDataDetail(view){
   <div class="card">
     <div class="panel-head"><div><h2>${esc(title)} (${rows.length})</h2></div></div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px;"><button class="btn btn-primary btn-sm" id="mdExportBtn">⬇ Export to Excel</button></div>
-    <div class="search-box"><input type="text" id="mdSearchInput" placeholder="Search by name, gate pass, mobile or post…" value="${esc(S.mdSearchQuery||'')}"></div>
+    <div class="search-box"><input type="text" id="mdSearchInput" placeholder="Search by name, gate pass, mobile or designation…" value="${esc(S.mdSearchQuery||'')}"></div>
     ${filteredRows.length===0?emptyState('search','No security person found','Check the spelling and try again.'):
-    `<div class="table-wrap"><table><thead><tr>${showRank?'<th>Rank</th>':'<th>S.No.</th>'}<th>Name</th><th>Gate pass</th><th>Mobile</th><th>Post</th>${view==='registered'?'<th>Registered on</th>':''}${showRank?'<th>Marks</th><th>Passing</th><th>Percentage</th><th>Result</th>':''}${showMissed?'<th>Missed Exams</th>':''}</tr></thead><tbody>
+    `<div class="table-wrap"><table><thead><tr>${showRank?'<th>Rank</th>':'<th>S.No.</th>'}<th>Name</th><th>Gate pass</th><th>Mobile</th><th>Designation</th>${view==='registered'?'<th>Registered on</th>':''}${showRank?'<th>Marks</th><th>Passing</th><th>Percentage</th><th>Result</th>':''}${showMissed?'<th>Missed Exams</th>':''}</tr></thead><tbody>
     ${filteredRows.map((r,idx)=>{
       const g=r.g;
       return `<tr><td class="mono">${showRank?r.rank:idx+1}</td><td><span class="name-link" data-profile="${esc(g.mobile)}">${esc(g.name)}</span></td><td class="mono">${esc(g.gatePass)}</td><td class="mono">${esc(g.mobile)}</td><td>${esc(g.post)}</td>${view==='registered'?`<td class="mono">${fmtRegAt(g.registeredAt)}</td>`:''}${showRank?`<td class="mono">${r.achievedMarks}/${r.totalMarks}</td><td class="mono">${r.totalMarks>0?passMarkFor(r.totalMarks):'-'}</td><td class="mono">${r.pct.toFixed(1)}%</td><td>${r.totalMarks>0?resultBadgeHtml(r.achievedMarks,r.totalMarks):'-'}</td>`:''}${showMissed?`<td>${r.missed.length?esc(r.missed.join(', ')):'-'}</td>`:''}</tr>`;
@@ -5134,22 +5154,22 @@ function exportMasterDataExcel(view){
   let header, dataRows, title;
   if(view==='registered'){
     const ranking = guardRanking();
-    header = ['Rank','Name','Gate Pass Number','Mobile','Post','Registered On','Achieved Marks','Total Marks','Passing Marks','Percentage','Result'];
+    header = ['Rank','Name','Gate Pass Number','Mobile','Designation','Registered On','Achieved Marks','Total Marks','Passing Marks','Percentage','Result'];
     dataRows = ranking.map((r,i)=>[i+1, r.g.name, r.g.gatePass, r.g.mobile, r.g.post, fmtRegAt(r.g.registeredAt), r.achievedMarks, r.totalMarks, r.totalMarks>0?passMarkFor(r.totalMarks):'-', r.pct.toFixed(1)+'%', r.totalMarks>0?resultWord(r.achievedMarks,r.totalMarks):'-']);
     title = 'Registered Security personnel';
   } else if(view==='pass' || view==='fail'){
-    header = ['Rank','Name','Gate Pass Number','Mobile','Post','Achieved Marks','Total Marks','Passing Marks','Percentage','Result'];
+    header = ['Rank','Name','Gate Pass Number','Mobile','Designation','Achieved Marks','Total Marks','Passing Marks','Percentage','Result'];
     dataRows = masterDataPassFail()[view].map((r,i)=>[i+1, r.g.name, r.g.gatePass, r.g.mobile, r.g.post, r.achievedMarks, r.totalMarks, r.totalMarks>0?passMarkFor(r.totalMarks):'-', r.pct.toFixed(1)+'%', r.totalMarks>0?resultWord(r.achievedMarks,r.totalMarks):'-']);
     title = view==='pass' ? 'Pass' : 'Fail';
   } else {
     const { attend, notAttend } = masterDataAttendance();
-    const list = view==='attend' ? attend : notAttend;
+    const list = view==='attend' ? recByAtt(attend, DB.attempts) : recByReg(notAttend);
     if(view==='notattend'){
       const examsToCheck = masterDataExamsToCheck().examsToCheck;
-      header = ['S.No.','Name','Gate Pass Number','Mobile','Post','Missed Exams'];
+      header = ['S.No.','Name','Gate Pass Number','Mobile','Designation','Missed Exams'];
       dataRows = list.map((g,i)=>[i+1, g.name, g.gatePass, g.mobile, g.post, missedExamTypesFor(g.mobile, examsToCheck).join(', ') || '-']);
     } else {
-      header = ['S.No.','Name','Gate Pass Number','Mobile','Post'];
+      header = ['S.No.','Name','Gate Pass Number','Mobile','Designation'];
       dataRows = list.map((g,i)=>[i+1, g.name, g.gatePass, g.mobile, g.post]);
     }
     title = view==='attend' ? 'Attend' : 'Not Attend';
@@ -5191,7 +5211,7 @@ function adminGuardProfile(){
     <div class="panel-head"><div><h2>${esc(g.name)}</h2><p class="mono">${esc(g.gatePass)} · ${esc(g.post)} · ${esc(g.mobile)}</p><p style="margin-top:4px;">Registered on: <span class="mono">${fmtRegAt(g.registeredAt)}</span></p></div>
       <div class="prof-actions">
         <button class="btn btn-ghost btn-sm" id="resetPinBtn" type="button">${icon('eye',14)} Reset PIN</button>
-        <button class="icon-edit-btn" id="editGuardBtn" type="button" title="Edit name / gate pass" aria-label="Edit">${icon('edit',14)}</button>
+        <button class="icon-edit-btn" id="editGuardBtn" type="button" title="Edit name / gate pass / designation" aria-label="Edit">${icon('edit',14)}</button>
         <button class="icon-del-btn" id="delGuardBtn" type="button" title="Remove security person" aria-label="Delete">${icon('trash',14)}</button>
       </div>
     </div>
@@ -5201,6 +5221,7 @@ function adminGuardProfile(){
         <div class="field-row">
           <div class="field" style="margin-bottom:0;"><label>Name</label><input type="text" name="name" value="${esc(g.name)}" required></div>
           <div class="field" style="margin-bottom:0;"><label>Gate pass number (8–10 digits)</label><input type="text" name="gatePass" value="${esc(g.gatePass)}" inputmode="numeric" maxlength="10" minlength="8" pattern="[0-9]{8,10}" required></div>
+          <div class="field" style="margin-bottom:0;"><label>Designation</label><select name="post" required>${POSTS.map(p=>`<option value="${p}" ${p===String(g.post||'').trim()?'selected':''}>${p} (${POST_FULL[p]})</option>`).join('')}${(g.post && !POSTS.includes(String(g.post).trim()))?`<option value="${esc(g.post)}" selected>${esc(g.post)}</option>`:''}</select></div>
         </div>
         ${S.editGuardError?`<div class="error-box" style="margin-top:10px;">${esc(S.editGuardError)}</div>`:''}
         <div style="display:flex;gap:8px;margin-top:12px;">
@@ -5284,19 +5305,21 @@ function bindAdminGuardProfile(){
     const fd = new FormData(egf);
     const name = autoNameCase(String(fd.get('name')||'').trim().replace(/\s+/g,' '));
     const gatePass = String(fd.get('gatePass')||'').trim();
+    const post = String(fd.get('post')||'').trim();
     const me = S.profileMobile;
     if(!name){ patch({editGuardError:'Name cannot be empty.'}); return; }
+    if(!post){ patch({editGuardError:'Please select a designation.'}); return; }
     if(!/^\d{8,10}$/.test(gatePass)){ patch({editGuardError:'Gate pass number must be 8 to 10 digits.'}); return; }
     if(DB.guards.some(x=>x.mobile!==me && String(x.gatePass||'').toLowerCase()===gatePass.toLowerCase())){ patch({editGuardError:'This gate pass number is already used by another security person.'}); return; }
     withBusy(egf, async ()=>{
-      const {ok,error} = await dbWriteAdmin('guards','update', {name, gate_pass:gatePass}, {mobile:me}, 'guards');
+      const {ok,error} = await dbWriteAdmin('guards','update', {name, gate_pass:gatePass, post}, {mobile:me}, 'guards');
       if(!ok){
         console.error(error);
         const m = String((error&&error.message)||'');
         patch({editGuardError: /duplicate|unique|GATEPASS/i.test(m) ? 'This gate pass number is already used by another security person.' : 'Could not save the changes. '+m});
         return;
       }
-      const g = findGuard(me); if(g){ g.name = name; g.gatePass = gatePass; }
+      const g = findGuard(me); if(g){ g.name = name; g.gatePass = gatePass; g.post = post; }
       patch({showEditGuard:false, editGuardError:null});
       showConfirmToast('Details updated');
     });
@@ -5528,6 +5551,92 @@ function startLiveSync(){
   document.addEventListener('visibilitychange', onBack);
   window.addEventListener('focus', onBack);
 }
+</script>
+
+<script>
+/* Sortable list columns: small \u2191\u2193 keys beside every column title.
+   1st click = A\u2192Z / low\u2192high / old\u2192new, 2nd click = reverse. Works on every table
+   (Dashboard, Results, Master Data lists...). Survives re-render & search. */
+(function(){
+  var MON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  var STATE={}; /* tableKey -> {col, dir} */
+  function parseDate(t){
+    var m=/(\d{1,2})\s+([A-Za-z]{3,})\.?\s+(\d{4}),?\s+(\d{1,2}):(\d{2})\s*([ap]m)/i.exec(t); if(!m) return null;
+    var mo=MON[m[2].slice(0,3).toLowerCase()]; if(mo===undefined) return null;
+    var h=parseInt(m[4],10)%12; if(/pm/i.test(m[6])) h+=12;
+    return new Date(+m[3],mo,+m[1],h,+m[5]).getTime();
+  }
+  function parseFrac(t){ var m=/^(-?\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/.exec(t); return m?parseFloat(m[1]):null; }
+  function parsePct(t){ var m=/^(-?\d+(?:\.\d+)?)\s*%$/.exec(t); return m?parseFloat(m[1]):null; }
+  function parseNum(t){ return /^-?\d+(?:\.\d+)?$/.test(t)?parseFloat(t):null; }
+  function colType(vals){
+    var kinds=[['date',parseDate],['frac',parseFrac],['pct',parsePct],['num',parseNum]];
+    var ne=vals.filter(function(v){return v!=='' && v!=='-';});
+    if(!ne.length) return {k:'text',f:null};
+    for(var i=0;i<kinds.length;i++){ var f=kinds[i][1]; if(ne.every(function(v){return f(v)!==null;})) return {k:kinds[i][0],f:f}; }
+    return {k:'text',f:null};
+  }
+  function sortTable(table, key, col, dir){
+    var tb=table.tBodies[0]; if(!tb) return;
+    var rows=Array.prototype.slice.call(tb.rows);
+    var vals=rows.map(function(r){ return (r.cells[col]?r.cells[col].textContent:'').replace(/\s+/g,' ').trim(); });
+    var T=colType(vals);
+    var items=rows.map(function(r,i){ var v=vals[i]; return {r:r,i:i,v:v,empty:(v===''||v==='-'),n:(T.f&&v!==''&&v!=='-')?T.f(v):null}; });
+    var coll=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
+    items.sort(function(a,b){
+      if(a.empty!==b.empty) return a.empty?1:-1;           /* blanks always last */
+      var c = T.f ? (a.n-b.n) : coll.compare(a.v,b.v);
+      if(c===0) return a.i-b.i;
+      return dir==='asc'?c:-c;
+    });
+    items.forEach(function(it){ tb.appendChild(it.r); });
+    /* keep S.No. = 1,2,3... in the new order */
+    var sn=-1; Array.prototype.forEach.call(table.tHead.rows[0].cells,function(th,i){ if((th.getAttribute('data-label')||'').toLowerCase().replace(/\./g,'')==='sno') sn=i; });
+    if(sn>=0) Array.prototype.forEach.call(tb.rows,function(r,i){ if(r.cells[sn]) r.cells[sn].textContent=String(i+1); });
+  }
+  function paint(table, col, dir){
+    Array.prototype.forEach.call(table.tHead.rows[0].cells,function(th,i){
+      var k=th.querySelector('.sortk'); if(!k) return;
+      var up=k.children[0], dn=k.children[1];
+      up.className=(i===col&&dir==='asc')?'on':''; dn.className=(i===col&&dir==='desc')?'on':'';
+    });
+  }
+  function enhance(table){
+    if(table.getAttribute('data-sortinit')) return;
+    if(!table.tHead||!table.tHead.rows.length||!table.tBodies[0]) return;
+    var ths=table.tHead.rows[0].cells, n=ths.length;
+    var ok=Array.prototype.every.call(table.tBodies[0].rows,function(r){ return r.cells.length===n; });
+    if(!ok||!table.tBodies[0].rows.length) return;
+    table.setAttribute('data-sortinit','1');
+    var key=Array.prototype.map.call(ths,function(t){return t.textContent.trim();}).join('|');
+    Array.prototype.forEach.call(ths,function(th,i){
+      var label=th.textContent.trim(); th.setAttribute('data-label',label);
+      var lc=label.toLowerCase().replace(/\./g,'');
+      if(!label||lc==='sno') return;
+      th.classList.add('th-sortable');
+      var k=document.createElement('span'); k.className='sortk'; k.setAttribute('aria-hidden','true');
+      k.innerHTML='<i>\u2191</i><i>\u2193</i>'; th.appendChild(k);
+      th.addEventListener('click',function(){
+        var st=STATE[key]; var dir=(st&&st.col===i&&st.dir==='asc')?'desc':'asc';
+        STATE[key]={col:i,dir:dir}; busy=true; sortTable(table,key,i,dir); paint(table,i,dir); busy=false;
+      });
+    });
+    var st=STATE[key];
+    if(st&&st.col<n){ sortTable(table,key,st.col,st.dir); paint(table,st.col,st.dir); }
+  }
+  var busy=false;
+  function scan(root){
+    if(busy) return; busy=true;
+    try{ (root||document).querySelectorAll('.table-wrap table').forEach(enhance); }catch(e){}
+    busy=false;
+  }
+  function start(){
+    var app=document.getElementById('app'); if(!app) return;
+    scan(app);
+    new MutationObserver(function(){ if(!busy) scan(app); }).observe(app,{childList:true,subtree:true});
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start); else start();
+})();
 </script>
 </body>
 </html>
