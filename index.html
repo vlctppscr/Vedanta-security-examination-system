@@ -1135,6 +1135,19 @@ th.th-sortable:hover{color:var(--text,#fff);}
 th.th-sortable:hover .sortk i{opacity:.65;}
 .sortk i.on{opacity:1;color:var(--amber,#F0A93B);}
 
+
+/* ---- exam type highlight on the exam cards inside a month ---- */
+.tile .tile-top-l{display:flex;align-items:center;gap:10px;min-width:0;flex:1;flex-wrap:wrap;}
+.exam-type-hl{
+  display:inline-flex; align-items:center; max-width:100%;
+  padding:4px 12px; border-radius:999px;
+  background:var(--amber-soft);
+  border:1.5px solid var(--amber); color:var(--amber);
+  font-weight:800; font-size:13px; letter-spacing:.2px; line-height:1.3;
+  box-shadow:0 0 0 3px var(--amber-soft);
+}
+.tile-locked .exam-type-hl{ opacity:.75; }
+
 /* ---- themed popup (replaces browser alert/confirm) ---- */
 .vm-backdrop{
   position:fixed; inset:0; z-index:10001;
@@ -2997,8 +3010,8 @@ function screenGuardMonth(){
     const exLocked = !!ex.locked && (!att || att.approvedRetake);
     if(exLocked){ badge = `<div class="month-lock-badge" title="Locked by admin">${icon('lock',13)}</div>`; sub = 'Locked by admin'; }
     return `<div class="tile ${exLocked?'tile-locked':''}" data-exam="${ex.id}" ${exLocked?'data-locked="1"':''}>
-      <div class="tile-top"><div class="month-icon">${icon('doc',17)}</div>${badge}</div>
-      <h3>${examHeadlineHtml(ex)}${examTypeChip(ex)}</h3>
+      <div class="tile-top"><div class="tile-top-l"><div class="month-icon">${icon('doc',17)}</div>${ex.examType ? `<span class="exam-type-hl">${esc(ex.examType)}</span>` : ''}</div>${badge}</div>
+      ${ex.examType ? '' : `<h3>${examHeadlineHtml(ex)}</h3>`}
       <div class="sub">${sub}${(dropped&&!exLocked)?` · ${dropped}`:''}</div>
     </div>`;
   }).join('')}</div>`}
