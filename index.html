@@ -1136,6 +1136,8 @@ th.th-sortable:hover .sortk i{opacity:.65;}
 .sortk i.on{opacity:1;color:var(--amber,#F0A93B);}
 
 
+/* mobile: on the main (home) page don't show the name / gate pass in the header — only after login, on the inner screens */
+@media (max-width:600px){ .session-chip.on-home .who{ display:none; } }
 /* ---- exam type highlight on the exam cards inside a month ---- */
 .tile .tile-top-l{display:flex;align-items:center;gap:10px;min-width:0;flex:1;flex-wrap:wrap;}
 .exam-type-hl{
@@ -1224,6 +1226,7 @@ html[data-theme="light"] .vm-backdrop{ background:rgba(19,26,44,.38); }
     exit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>'
   };
   const queue = []; let busy = false;
+  let activeJob = null, expectPop = 0;
 
   function pickKind(msg, isConfirm){
     const m = String(msg).toLowerCase();
@@ -1271,6 +1274,9 @@ html[data-theme="light"] .vm-backdrop{ background:rgba(19,26,44,.38); }
     const kind = job.opts.kind || pickKind(msg, job.confirm);
     const title = job.opts.title || pickTitle(kind, msg, job.confirm);
     const prevFocus = document.activeElement;
+    /* one history entry per open popup, so the phone/browser Back button closes the popup first */
+    let pushed = false;
+    try{ history.pushState({vsesModal:true}, ''); pushed = true; }catch(e){}
 
     const back = document.createElement('div');
     back.className = 'vm-backdrop';
@@ -1305,8 +1311,10 @@ html[data-theme="light"] .vm-backdrop{ background:rgba(19,26,44,.38); }
     (cancelBtn && kind==='danger' ? cancelBtn : okBtn).focus();
 
     let done = false;
-    function close(result){
+    function close(result, fromBack){
       if(done) return; done = true;
+      activeJob = null;
+      if(pushed && !fromBack){ expectPop++; try{ history.back(); }catch(e){ expectPop--; } }
       document.removeEventListener('keydown', onKey, true);
       back.classList.remove('vm-show');
       setTimeout(()=>{
@@ -1324,6 +1332,7 @@ html[data-theme="light"] .vm-backdrop{ background:rgba(19,26,44,.38); }
         items[(i + (e.shiftKey ? items.length-1 : 1)) % items.length].focus();
       }
     }
+    activeJob = { confirm: job.confirm, close };
     document.addEventListener('keydown', onKey, true);
     okBtn.addEventListener('click', ()=>close(true));
     if(cancelBtn) cancelBtn.addEventListener('click', ()=>close(false));
@@ -1337,6 +1346,13 @@ html[data-theme="light"] .vm-backdrop{ background:rgba(19,26,44,.38); }
     return new Promise(resolve=>{ queue.push({msg, opts:opts||{}, confirm:true, resolve}); next(); });
   };
   window.alert = function(msg){ window.uiAlert(msg); };
+  /* called first thing from the app's popstate listener: returns true when the event was
+     only about the popup (Back pressed while it is open, or our own history cleanup) */
+  window.__vmHandlePop = function(){
+    if(expectPop>0){ expectPop--; return true; }
+    if(activeJob){ const j = activeJob; j.close(j.confirm ? false : true, true); return true; }
+    return false;
+  };
 })();
 
 /* =========================================================
@@ -2355,6 +2371,7 @@ function leaveExamResult(screen, extra){
   render();
 }
 window.addEventListener('popstate', async ()=>{
+  if(window.__vmHandlePop && window.__vmHandlePop()) return;
   if(S && S.screen==='guard-exam-run' && !S.submitted){
     // Never let a stray back-button press quietly throw away an in-progress
     // exam and its answers — confirm first, and if the person cancels,
@@ -2583,13 +2600,13 @@ function topbarHtml(){
   if(SESSION && SESSION.role==='guard'){
     const g = findGuard(SESSION.mobile);
     if(g){
-      right = `<div class="session-chip">
+      right = `<div class="session-chip${S.screen==='home'?' on-home':''}">
         <div class="who"><b>${esc(g.name)}</b><span>${esc(g.gatePass)} · ${esc(g.post)}</span></div>
         <button class="btn btn-ghost btn-sm" data-act="logout">Logout</button>
       </div>`;
     }
   } else if(SESSION && SESSION.role==='admin'){
-    right = `<div class="session-chip">
+    right = `<div class="session-chip${S.screen==='home'?' on-home':''}">
       <div class="who"><b>${esc(SESSION.name||'Admin')}</b><span>ADMIN · ${esc(SESSION.mobile)}</span></div>
       <button class="btn btn-ghost btn-sm" data-act="logout">Logout</button>
     </div>`;
