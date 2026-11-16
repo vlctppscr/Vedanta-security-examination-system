@@ -4895,13 +4895,13 @@ function exportExamExcel(examId, monthId, typeFilter){
   }
   sheets.forEach(sh=> XLSX.utils.book_append_sheet(wb, sh.ws, sheetName(sh.name)));
   const blob = new Blob([XLSX.write(wb,{bookType:'xlsx', type:'array'})], {type:'application/octet-stream'});
-  let filename;
-  if(isAll){
-    const m = DB.months.find(x=>x.id===monthId);
-    filename = ((m&&m.label?m.label:'month').replace(/[^a-z0-9]+/gi,'_')) + '_all_exam_results.xlsx';
-  } else {
-    filename = (((exList[0].nameEn||'').replace(/[^a-z0-9]+/gi,'_'))||'exam_results') + '_results.xlsx';
-  }
+  /* File name: "<Month> - <Exam type> Result <Year>"  e.g. "October - Pre SOP Result 2026" */
+  const mRec = DB.months.find(x=>x.id===monthId) || {};
+  let monName = (mRec.monthNum!=null && MONTH_NAMES[mRec.monthNum]) ? MONTH_NAMES[mRec.monthNum] : String(mRec.label||'').replace(/\s*\d{4}\s*$/,'').trim();
+  let yearTxt = mRec.year ? String(mRec.year) : ((String(mRec.label||'').match(/\d{4}/)||[''])[0]);
+  const typeTxt = isAll ? (typeFilter || 'All Exam Types') : (exList[0].examType || exList[0].nameEn || 'Exam');
+  let filename = [monName||'Month', '-', typeTxt, 'Result', yearTxt].filter(Boolean).join(' ')
+    .replace(/[\\\/:*?"<>|]+/g,' ').replace(/\s+/g,' ').trim() + '.xlsx';
   if(window.claude){
     claude.use('downloads').then(dl=>{
       if(!dl){ fallbackDownload(blob, filename); return; }
