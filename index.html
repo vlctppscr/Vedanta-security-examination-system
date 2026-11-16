@@ -1134,12 +1134,198 @@ th.th-sortable:hover{color:var(--text,#fff);}
 .sortk i+i{margin-left:-1px;}
 th.th-sortable:hover .sortk i{opacity:.65;}
 .sortk i.on{opacity:1;color:var(--amber,#F0A93B);}
+
+/* ---- themed popup (replaces browser alert/confirm) ---- */
+.vm-backdrop{
+  position:fixed; inset:0; z-index:10001;
+  display:flex; align-items:center; justify-content:center;
+  padding:20px;
+  background:rgba(4,8,18,.62);
+  -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+  opacity:0; transition:opacity .2s ease;
+}
+html[data-theme="light"] .vm-backdrop{ background:rgba(19,26,44,.38); }
+.vm-backdrop.vm-show{ opacity:1; }
+.vm-card{
+  --vm-accent:var(--amber); --vm-accent-soft:var(--amber-soft);
+  position:relative; width:100%; max-width:400px;
+  background:var(--panel); color:var(--text);
+  border:1px solid var(--line-2); border-radius:20px;
+  padding:28px 24px 20px; text-align:center;
+  box-shadow:0 24px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.02) inset;
+  transform:translateY(14px) scale(.94); opacity:0;
+  transition:transform .26s cubic-bezier(.34,1.56,.64,1), opacity .2s ease;
+  overflow:hidden;
+}
+.vm-card::before{
+  content:""; position:absolute; left:0; right:0; top:0; height:3px;
+  background:linear-gradient(90deg,transparent,var(--vm-accent),transparent);
+}
+.vm-backdrop.vm-show .vm-card{ transform:none; opacity:1; }
+.vm-card.vm-lock,.vm-card.vm-warn{ --vm-accent:var(--amber); --vm-accent-soft:var(--amber-soft); }
+.vm-card.vm-error,.vm-card.vm-danger{ --vm-accent:var(--red); --vm-accent-soft:var(--red-soft); }
+.vm-card.vm-info{ --vm-accent:var(--blue); --vm-accent-soft:rgba(91,141,239,.16); }
+.vm-card.vm-success{ --vm-accent:var(--green); --vm-accent-soft:var(--green-soft); }
+.vm-icon{
+  width:64px; height:64px; margin:0 auto 16px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  color:var(--vm-accent); background:var(--vm-accent-soft);
+  border:1px solid var(--vm-accent);
+  box-shadow:0 0 0 7px var(--vm-accent-soft);
+}
+.vm-icon svg{ width:28px; height:28px; }
+.vm-title{ font-family:'Plus Jakarta Sans',var(--font); font-size:19px; font-weight:800; letter-spacing:.2px; margin:0 0 8px; }
+.vm-msg{ font-size:14.5px; line-height:1.55; color:var(--muted); white-space:pre-line; word-break:break-word; margin:0; max-height:46vh; overflow:auto; }
+.vm-actions{ display:flex; gap:10px; margin-top:22px; }
+.vm-actions .btn{ flex:1; justify-content:center; padding:12px 16px; font-size:14.5px; border-radius:999px; }
+.vm-actions .vm-ok-danger{ background:var(--red); border-color:var(--red); color:#fff; }
+.vm-actions .vm-ok-danger:hover{ background:var(--red); filter:brightness(1.08); box-shadow:0 6px 18px rgba(229,99,107,.4); }
+.vm-actions .vm-ok-danger::before{ display:none; }
+@media (max-width:480px){
+  .vm-card{ padding:26px 20px 18px; border-radius:18px; }
+  .vm-actions{ flex-direction:column-reverse; }
+  .vm-actions .btn{ width:100%; }
+}
+@media (prefers-reduced-motion:reduce){ .vm-backdrop,.vm-card{ transition:none; } }
 </style>
 </head>
 <body>
 <div id="app"></div>
 <div class="secure-overlay" id="secureOverlay"><div class="secure-overlay-card"><b>Screen protected</b>This exam screen is protected. Return to this tab/window for the content to reappear.</div></div>
 <script>
+
+/* =========================================================
+   THEMED POPUP — replaces the browser's native alert()/confirm()
+   so every message matches the site theme on mobile and PC.
+   uiAlert(msg)   -> Promise (resolves when closed)
+   uiConfirm(msg) -> Promise<boolean>
+   window.alert is overridden, so older alert(...) calls work too.
+   ========================================================= */
+(function(){
+  const ICONS = {
+    lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/><circle cx="12" cy="16" r="1" fill="currentColor"/></svg>',
+    warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>',
+    error:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="m15 9-6 6M9 9l6 6"/></svg>',
+    info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5M12 7.5h.01"/></svg>',
+    danger:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14M10 11v6M14 11v6"/></svg>',
+    exit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>'
+  };
+  const queue = []; let busy = false;
+
+  function pickKind(msg, isConfirm){
+    const m = String(msg).toLowerCase();
+    if(/locked/.test(m)) return 'lock';
+    if(isConfirm){
+      if(/delete|permanently|remove|reset/.test(m)) return 'danger';
+      if(/leave|exit/.test(m)) return 'exit';
+      return 'warn';
+    }
+    if(/expired/.test(m)) return 'warn';
+    if(/failed|went wrong|could not|couldn.t|error|cannot|can.t/.test(m)) return 'error';
+    if(/required|please select|already|no month|no data|no attempts|there is no|upload an image/.test(m)) return 'warn';
+    return 'info';
+  }
+  function pickTitle(kind, msg, isConfirm){
+    const m = String(msg).toLowerCase();
+    if(kind==='lock') return /exam/.test(m) ? 'Exam Locked' : 'Month Locked';
+    if(isConfirm){
+      if(kind==='exit') return /logged out/.test(m) ? 'Exit & Logout?' : 'Leave Exam?';
+      if(/delete/.test(m)) return 'Delete?';
+      if(/reset/.test(m)) return 'Reset?';
+      if(/remove/.test(m)) return 'Remove?';
+      return 'Please Confirm';
+    }
+    if(/expired/.test(m)) return 'Session Expired';
+    if(kind==='error') return 'Something Went Wrong';
+    if(kind==='warn') return 'Please Check';
+    return 'Notice';
+  }
+  function pickOkText(kind, msg){
+    const m = String(msg).toLowerCase();
+    if(/delete/.test(m)) return 'Yes, Delete';
+    if(/reset/.test(m)) return 'Yes, Reset';
+    if(/remove/.test(m)) return 'Yes, Remove';
+    if(/exit/.test(m)) return 'Yes, Exit';
+    if(/leave/.test(m)) return 'Yes, Leave';
+    return 'Confirm';
+  }
+
+  function next(){
+    if(busy || !queue.length) return;
+    busy = true;
+    const job = queue.shift();
+    const msg = String(job.msg==null ? '' : job.msg);
+    const kind = job.opts.kind || pickKind(msg, job.confirm);
+    const title = job.opts.title || pickTitle(kind, msg, job.confirm);
+    const prevFocus = document.activeElement;
+
+    const back = document.createElement('div');
+    back.className = 'vm-backdrop';
+    const card = document.createElement('div');
+    card.className = 'vm-card vm-' + (kind==='exit' ? 'warn' : kind);
+    card.setAttribute('role', job.confirm ? 'alertdialog' : 'dialog');
+    card.setAttribute('aria-modal', 'true');
+    card.setAttribute('aria-label', title);
+
+    const ic = document.createElement('div'); ic.className = 'vm-icon'; ic.innerHTML = ICONS[kind] || ICONS.info;
+    const h = document.createElement('h3'); h.className = 'vm-title'; h.textContent = title;
+    const p = document.createElement('p'); p.className = 'vm-msg'; p.textContent = msg;
+    const act = document.createElement('div'); act.className = 'vm-actions';
+
+    let cancelBtn = null;
+    if(job.confirm){
+      cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button'; cancelBtn.className = 'btn';
+      cancelBtn.textContent = job.opts.cancelText || (kind==='exit' ? 'Stay' : 'Cancel');
+      act.appendChild(cancelBtn);
+    }
+    const okBtn = document.createElement('button');
+    okBtn.type = 'button';
+    okBtn.className = 'btn ' + (kind==='danger' ? 'vm-ok-danger' : 'btn-primary');
+    okBtn.textContent = job.opts.okText || (job.confirm ? pickOkText(kind, msg) : 'OK');
+    act.appendChild(okBtn);
+
+    card.appendChild(ic); card.appendChild(h); card.appendChild(p); card.appendChild(act);
+    back.appendChild(card);
+    document.body.appendChild(back);
+    requestAnimationFrame(()=>requestAnimationFrame(()=>back.classList.add('vm-show')));
+    (cancelBtn && kind==='danger' ? cancelBtn : okBtn).focus();
+
+    let done = false;
+    function close(result){
+      if(done) return; done = true;
+      document.removeEventListener('keydown', onKey, true);
+      back.classList.remove('vm-show');
+      setTimeout(()=>{
+        if(back.parentNode) back.parentNode.removeChild(back);
+        try{ prevFocus && prevFocus.focus && prevFocus.focus(); }catch(e){}
+        busy = false; job.resolve(result); next();
+      }, 190);
+    }
+    function onKey(e){
+      if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); close(job.confirm ? false : true); }
+      else if(e.key==='Tab'){
+        const items = cancelBtn ? [cancelBtn, okBtn] : [okBtn];
+        const i = items.indexOf(document.activeElement);
+        e.preventDefault();
+        items[(i + (e.shiftKey ? items.length-1 : 1)) % items.length].focus();
+      }
+    }
+    document.addEventListener('keydown', onKey, true);
+    okBtn.addEventListener('click', ()=>close(true));
+    if(cancelBtn) cancelBtn.addEventListener('click', ()=>close(false));
+    back.addEventListener('mousedown', e=>{ if(e.target===back) close(job.confirm ? false : true); });
+  }
+
+  window.uiAlert = function(msg, opts){
+    return new Promise(resolve=>{ queue.push({msg, opts:opts||{}, confirm:false, resolve}); next(); });
+  };
+  window.uiConfirm = function(msg, opts){
+    return new Promise(resolve=>{ queue.push({msg, opts:opts||{}, confirm:true, resolve}); next(); });
+  };
+  window.alert = function(msg){ window.uiAlert(msg); };
+})();
+
 /* =========================================================
    SECURITY EXAM PORTAL
    Storage: Supabase (shared cloud database).
@@ -1200,7 +1386,7 @@ async function mergeAdminKeys(){
   if(!SESSION.token){ clearSession(); location.reload(); return; } // old session without token: log in again
   const { data, error } = await sb.rpc('admin_get_keys', {p_token: SESSION.token});
   if(error){
-    if(String(error.message||'').includes('ADMIN_AUTH_FAILED')){ clearSession(); alert('Admin session expired. Please log in again.'); location.reload(); return; }
+    if(String(error.message||'').includes('ADMIN_AUTH_FAILED')){ clearSession(); await uiAlert('Admin session expired. Please log in again.'); location.reload(); return; }
     throw error;
   }
   const map = {}; (data||[]).forEach(r=>{ map[r.question_id] = r.correct; });
@@ -1214,14 +1400,14 @@ async function adminSetKey(questionId, correct){
    the admin token and only allows specific tables/operations. ---- */
 async function adminDb(table, op, data, match){
   if(!SESSION || !SESSION.token){
-    clearSession(); alert('Admin session expired. Please log in again.'); location.reload();
+    clearSession(); await uiAlert('Admin session expired. Please log in again.'); location.reload();
     return { data:null, error:{ message:'ADMIN_AUTH_FAILED' } };
   }
   const { data: res, error } = await sb.rpc('admin_write', {
     p_token: SESSION.token, p_table: table, p_op: op, p_data: data||null, p_match: match||null
   });
   if(error && String(error.message||'').includes('ADMIN_AUTH_FAILED')){
-    clearSession(); alert('Admin session expired. Please log in again.'); location.reload();
+    clearSession(); await uiAlert('Admin session expired. Please log in again.'); location.reload();
   }
   return { data: res, error };
 }
@@ -2155,12 +2341,12 @@ function leaveExamResult(screen, extra){
   try{ history.replaceState({vsesNav:true}, ''); }catch(e){}
   render();
 }
-window.addEventListener('popstate', ()=>{
+window.addEventListener('popstate', async ()=>{
   if(S && S.screen==='guard-exam-run' && !S.submitted){
     // Never let a stray back-button press quietly throw away an in-progress
     // exam and its answers — confirm first, and if the person cancels,
     // push the browser back to where it was so they stay on the exam.
-    const leave = confirm('Are you sure you want to leave? Your exam progress and answers will be lost.');
+    const leave = await uiConfirm('Are you sure you want to leave? Your exam progress and answers will be lost.');
     if(!leave){ try{ history.pushState({vsesNav:true}, ''); }catch(e){} return; }
   }
   if(HISTORY.length===0 && SESSION){
@@ -2170,7 +2356,7 @@ window.addEventListener('popstate', ()=>{
     // dropping the session, so do the same here: confirm, and only on
     // "OK" log the person out and land on the login screen. On "Cancel",
     // push the browser forward again so they stay exactly where they were.
-    const exit = confirm('Are you sure you want to exit? You will be logged out.');
+    const exit = await uiConfirm('Are you sure you want to exit? You will be logged out.');
     if(!exit){ try{ history.pushState({vsesNav:true}, ''); }catch(e){} return; }
     clearSession();
     enterApp('home');
@@ -4044,8 +4230,8 @@ function bindHeroSettings(){
     saveSiteSettingPartial(Object.assign({heroFontHead:p.fh, heroFontBody:p.fb}, p.c), p.name+' applied');
   }));
   const rh = document.getElementById('resetHeroBtn');
-  if(rh) rh.addEventListener('click', ()=>{
-    if(!confirm('Reset the hero page (text, fonts, sizes, position and colours) to the default look?')) return;
+  if(rh) rh.addEventListener('click', async ()=>{
+    if(!(await uiConfirm('Reset the hero page (text, fonts, sizes, position and colours) to the default look?'))) return;
     saveSiteSettingPartial(Object.assign({}, HERO_RESET), 'Hero page reset to default');
   });
 }
@@ -4147,8 +4333,8 @@ function bindBrandingSettings(){
     saveSiteSettingPartial({[key+'Transparency']:b.def}, 'Default transparency restored');
   }));
   const resetAll = document.getElementById('resetBrandingBtn');
-  if(resetAll) resetAll.addEventListener('click', ()=>{
-    if(!confirm('Remove the custom logo and all background images and go back to the default look?')) return;
+  if(resetAll) resetAll.addEventListener('click', async ()=>{
+    if(!(await uiConfirm('Remove the custom logo and all background images and go back to the default look?'))) return;
     const all = {logoImg:''};
     BG_META.concat([HERO_BG_META]).forEach(m=>{ const P = capKey(m.key); all['bg'+P]=''; all['bg'+P+'Type']='image'; all['bg'+P+'Blur']=m.blur; all['bg'+P+'Dim']=m.dim; });
     saveSiteSettingPartial(all, 'Default look restored');
@@ -4278,8 +4464,8 @@ function bindAdminMonths(){
     });
   }));
   document.querySelectorAll('[data-openmonth]').forEach(el=>el.addEventListener('click',()=>goPush({adminMonthId:el.getAttribute('data-openmonth')})));
-  document.querySelectorAll('[data-delmonth]').forEach(el=>el.addEventListener('click',()=>{
-    if(!confirm('Delete this entire month? All its exam sections, questions and attempts will also be deleted.')) return;
+  document.querySelectorAll('[data-delmonth]').forEach(el=>el.addEventListener('click',async ()=>{
+    if(!(await uiConfirm('Delete this entire month? All its exam sections, questions and attempts will also be deleted.'))) return;
     const id = el.getAttribute('data-delmonth');
     el.disabled = true;
     dbWriteAdmin('months','delete', null, {id}).then(({ok,error})=>{
@@ -4491,8 +4677,8 @@ function renderOptBuilders(qLang){
 }
 function bindAdminExamQuestions(){
   const ex = examById(S.adminExamId);
-  document.querySelectorAll('[data-delexam]').forEach(el=>el.addEventListener('click',()=>{
-    if(!confirm('Delete this exam section and all its questions?')) return;
+  document.querySelectorAll('[data-delexam]').forEach(el=>el.addEventListener('click',async ()=>{
+    if(!(await uiConfirm('Delete this exam section and all its questions?'))) return;
     const id = el.getAttribute('data-delexam');
     el.disabled = true;
     dbWriteAdmin('exams','delete', null, {id}).then(({ok,error})=>{
@@ -4512,8 +4698,8 @@ function bindAdminExamQuestions(){
       dbWriteAdmin('exams','update', {q_lang:val}, {id: ex.id}).then(({ok,error})=>{ if(!ok){ console.error(error); ex.qLang = prev; alert('Could not change the question language.\n\n'+(error&&error.message?error.message:'')); patch({}); } });
     }
   }));
-  document.querySelectorAll('[data-delq]').forEach(el=>el.addEventListener('click',()=>{
-    if(!confirm('Delete this question?')) return;
+  document.querySelectorAll('[data-delq]').forEach(el=>el.addEventListener('click',async ()=>{
+    if(!(await uiConfirm('Delete this question?'))) return;
     const delId = el.getAttribute('data-delq');
     el.disabled = true; el.textContent = 'Deleting…';
     dbWriteAdmin('questions','delete', null, {id: delId}).then(({ok,error})=>{
@@ -4763,8 +4949,8 @@ function bindAdminResults(){
     rs.addEventListener('input',()=>patch({resultsSearchQuery:rs.value})); }
   document.querySelectorAll('[data-viewatt]').forEach(el=>el.addEventListener('click',()=>go('admin-review',{attemptId:el.getAttribute('data-viewatt'), from:null, adminTab:'results'})));
   document.querySelectorAll('[data-profile]').forEach(el=>el.addEventListener('click',()=>goPush({adminTab:'guardprofile', profileMobile:el.getAttribute('data-profile')})));
-  document.querySelectorAll('[data-delatt]').forEach(el=>el.addEventListener('click',()=>{
-    if(!confirm('Permanently delete this result for this security person? This action cannot be undone.')) return;
+  document.querySelectorAll('[data-delatt]').forEach(el=>el.addEventListener('click',async ()=>{
+    if(!(await uiConfirm('Permanently delete this result for this security person? This action cannot be undone.'))) return;
     const delId = el.getAttribute('data-delatt');
     el.disabled = true;
     dbWriteAdmin('attempts','delete', null, {id: delId}, 'attempts').then(({ok,error})=>{
@@ -5115,7 +5301,7 @@ async function adminDeleteGuard(mobile, el, onDone){
     const resultsLine = attCount>0
       ? `\n\nAll ${attCount} exam result${attCount===1?'':'s'} of this person will also be deleted automatically — you do not need to delete them one by one.`
       : '';
-    if(!confirm(`Permanently delete ${g?g.name:mobile} (${mobile}) from registered security persons?${resultsLine}\n\nThis cannot be undone. They will need to register again (name, gate pass, new PIN) before they can log in or take any exam.`)) return;
+    if(!(await uiConfirm(`Permanently delete ${g?g.name:mobile} (${mobile}) from registered security persons?${resultsLine}\n\nThis cannot be undone. They will need to register again (name, gate pass, new PIN) before they can log in or take any exam.`))) return;
     if(el) el.disabled = true;
     try{
       /* 1) remove every exam result (attempt) of this person in one go */
@@ -5277,8 +5463,8 @@ function adminGuardProfile(){
 }
 function bindAdminGuardProfile(){
   document.querySelectorAll('[data-viewatt2]').forEach(el=>el.addEventListener('click',()=>go('admin-review',{attemptId:el.getAttribute('data-viewatt2'), adminTab:'guardprofile', profileMobile:S.profileMobile})));
-  document.querySelectorAll('[data-delatt2]').forEach(el=>el.addEventListener('click',()=>{
-    if(!confirm('Permanently delete this result for this security person? This action cannot be undone.')) return;
+  document.querySelectorAll('[data-delatt2]').forEach(el=>el.addEventListener('click',async ()=>{
+    if(!(await uiConfirm('Permanently delete this result for this security person? This action cannot be undone.'))) return;
     const delId = el.getAttribute('data-delatt2');
     el.disabled = true;
     dbWriteAdmin('attempts','delete', null, {id: delId}, 'attempts').then(({ok,error})=>{
