@@ -2597,7 +2597,11 @@ function render(){
 
 function topbarHtml(){
   let right = '';
-  if(SESSION && SESSION.role==='guard'){
+  /* name / gate pass / Logout only after login — never on the home or login (auth) screens */
+  const _noSessionChip = ['home','guard-auth','admin-auth'].includes(S.screen);
+  if(_noSessionChip){
+    right = `<button class="btn btn-ghost btn-sm" data-act="home">Home</button>`;
+  } else if(SESSION && SESSION.role==='guard'){
     const g = findGuard(SESSION.mobile);
     if(g){
       right = `<div class="session-chip${S.screen==='home'?' on-home':''}">
